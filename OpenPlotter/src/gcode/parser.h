@@ -8,7 +8,7 @@
 #define GCODE_PARSER_H
 
 #include "commands.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include <stdint.h>
 
 class GCodeParser {

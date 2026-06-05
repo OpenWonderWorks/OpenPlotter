@@ -11,7 +11,7 @@
 #include "../motion/stepper.h"
 #include "../motion/planner.h"
 #include "status.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 
 class Safety {
 public:

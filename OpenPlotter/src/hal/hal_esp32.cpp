@@ -9,10 +9,11 @@
  * ============================================================================
  */
 
+#include "../../openplotter_config.h"
+
 #if defined(BOARD_ESP32)
 
 #include "hal_esp32.h"
-#include "config.h"
 #include <Preferences.h>
 #include <esp_system.h>
 

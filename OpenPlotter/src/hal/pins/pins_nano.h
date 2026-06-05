@@ -16,7 +16,9 @@
 #ifndef PINS_NANO_H
 #define PINS_NANO_H
 
-// ── X Axis ──────────────────────────────────────────────────────────────────
+#include <Arduino.h>
+
+// ── CNC Shield V4 (Nano) Pin Mapping ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 #define X_STEP_PIN          2       // D2
 #define X_DIR_PIN           5       // D5
 #define X_ENABLE_PIN        8       // D8

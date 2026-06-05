@@ -25,7 +25,7 @@
 #include "homing.h"
 #include "../utils/logger.h"
 #include "../motion/tmc_driver.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include <string.h>
 
 // ============================================================================
@@ -374,7 +374,7 @@ HomingResult HomingManager::homeSensored(uint8_t axis) {
 // StallGuard stall detection via DIAG pin
 static volatile bool _stallDetected = false;
 
-static void IRAM_ATTR stallISR() {
+static void stallISR() {
     _stallDetected = true;
 }
 
@@ -446,3 +446,10 @@ HomingResult HomingManager::homeSensorless(uint8_t axis) {
     LOG_INFO("Sensorless homing: Axis %d complete", axis);
     return HomingResult::OK;
 }
+
+#else
+HomingResult HomingManager::homeSensorless(uint8_t axis) {
+    LOG_WARN("Sensorless homing not supported. Falling back to sensored.");
+    return homeSensored(axis);
+}
+#endif

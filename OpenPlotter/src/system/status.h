@@ -12,7 +12,7 @@
 #include "../motion/planner.h"
 #include "../tools/tool_controller.h"
 #include "../homing/homing.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 
 // ── Machine State ───────────────────────────────────────────────────────────
 enum class MachineState : uint8_t {

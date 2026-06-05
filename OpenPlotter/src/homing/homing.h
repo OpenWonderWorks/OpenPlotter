@@ -10,7 +10,7 @@
 #include "../hal/hal.h"
 #include "../motion/stepper.h"
 #include "../motion/planner.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include <stdint.h>
 
 // ── Homing Method ───────────────────────────────────────────────────────────

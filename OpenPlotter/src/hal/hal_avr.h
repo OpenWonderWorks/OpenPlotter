@@ -11,7 +11,6 @@
 
 #include "hal.h"
 #include <Arduino.h>
-#include <Servo.h>
 #include <EEPROM.h>
 
 #ifdef HYBRID_MODE
@@ -99,8 +98,8 @@ public:
     uint32_t getFreeMemory() override;
 
 private:
-    Servo _servo;
-    uint8_t _servoPin = 0;
+    uint8_t _servoPin = 255;
+    uint16_t _servoTargetUs = 0;
     bool _stepTimerRunning = false;
 
     #if defined(BOARD_NANO) && defined(HYBRID_MODE)

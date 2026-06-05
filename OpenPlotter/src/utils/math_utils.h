@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <math.h>
+#include <string.h>
 
 namespace MathUtils {
 

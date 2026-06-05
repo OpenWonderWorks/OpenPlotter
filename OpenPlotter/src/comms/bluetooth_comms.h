@@ -10,7 +10,7 @@
 #ifdef HAS_BLUETOOTH
 
 #include "../hal/hal.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 
 class BluetoothComms {
 public:

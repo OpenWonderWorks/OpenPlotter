@@ -14,7 +14,7 @@
 
 #include "../hal/hal.h"
 #include "planner.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include <stdint.h>
 
 // ── Stepper State ───────────────────────────────────────────────────────────

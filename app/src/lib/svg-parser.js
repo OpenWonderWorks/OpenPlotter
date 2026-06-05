@@ -80,12 +80,13 @@ function parseTransform(transformStr) {
  */
 function parsePathData(d) {
   const commands = [];
-  const regex = /([a-df-zAz-DF-Z])|([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)/g;
+  // Command parsing regex. Matches any single SVG command letter (except E/e for scientific notation) OR a number
+  const CMD_REGEX = /([a-df-zA-DF-Z])|([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)/g;
   let match;
   let currentCmd = null;
   let params = [];
   
-  while ((match = regex.exec(d)) !== null) {
+  while ((match = CMD_REGEX.exec(d)) !== null) {
     if (match[1]) { // It's a command letter
       if (currentCmd) {
         commands.push({ code: currentCmd, params });

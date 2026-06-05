@@ -9,10 +9,11 @@
  * ============================================================================
  */
 
+#include "../../openplotter_config.h"
+
 #if defined(BOARD_MEGA) || defined(BOARD_NANO)
 
 #include "hal_avr.h"
-#include "config.h"
 #include <avr/wdt.h>
 #include <avr/interrupt.h>
 
@@ -26,13 +27,29 @@ ISR(TIMER1_COMPA_vect) {
 }
 
 // ── Timer3 ISR (Mega) or Timer2 ISR (Nano) — Segment Preparation ──────────
+extern uint8_t _globalServoPin;
+extern uint16_t _globalServoUs;
+static volatile uint8_t _servoTick = 0;
+
+static inline void processServo() {
+    _servoTick++;
+    if (_servoTick >= 20) _servoTick = 0;
+    if (_globalServoPin != 255) {
+        if (_servoTick == 0) ::digitalWrite(_globalServoPin, HIGH);
+        else if (_servoTick == 1 && _globalServoUs <= 1500) ::digitalWrite(_globalServoPin, LOW);
+        else if (_servoTick == 2) ::digitalWrite(_globalServoPin, LOW);
+    }
+}
+
 #if defined(BOARD_MEGA)
 ISR(TIMER3_COMPA_vect) {
     if (_segmentTimerCb) _segmentTimerCb();
+    processServo();
 }
 #else
 ISR(TIMER2_COMPA_vect) {
     if (_segmentTimerCb) _segmentTimerCb();
+    processServo();
 }
 #endif
 
@@ -80,24 +97,31 @@ uint16_t HAL_AVR::analogRead(uint8_t pin) {
 // Servo
 // ============================================================================
 
+uint8_t _globalServoPin = 255;
+uint16_t _globalServoUs = 0;
+
 void HAL_AVR::servoAttach(uint8_t pin) {
     _servoPin = pin;
-    _servo.attach(pin, SERVO_MIN_PULSE, SERVO_MAX_PULSE);
+    _globalServoPin = pin;
+    ::pinMode(pin, OUTPUT);
 }
 
 void HAL_AVR::servoWrite(uint8_t pin, uint8_t angleDegrees) {
-    (void)pin; // Uses the attached servo
-    _servo.write(angleDegrees);
+    (void)pin;
+    uint16_t us = map(angleDegrees, 0, 180, 1000, 2000);
+    servoWriteMicroseconds(pin, us);
 }
 
 void HAL_AVR::servoWriteMicroseconds(uint8_t pin, uint16_t us) {
     (void)pin;
-    _servo.writeMicroseconds(us);
+    _servoTargetUs = us;
+    _globalServoUs = us;
 }
 
 void HAL_AVR::servoDetach(uint8_t pin) {
     (void)pin;
-    _servo.detach();
+    _servoPin = 255;
+    _globalServoPin = 255;
 }
 
 // ============================================================================
@@ -211,10 +235,10 @@ void HAL_AVR::attachInterrupt(uint8_t pin, InterruptCallback callback,
                                InterruptTrigger trigger) {
     int mode;
     switch (trigger) {
-        case InterruptTrigger::TRIG_RISING:  mode = TRIG_RISING; break;
-        case InterruptTrigger::TRIG_FALLING: mode = TRIG_FALLING; break;
-        case InterruptTrigger::TRIG_CHANGE:  mode = TRIG_CHANGE; break;
-        default: mode = TRIG_CHANGE;
+        case InterruptTrigger::TRIG_RISING:  mode = RISING; break;
+        case InterruptTrigger::TRIG_FALLING: mode = FALLING; break;
+        case InterruptTrigger::TRIG_CHANGE:  mode = CHANGE; break;
+        default: mode = CHANGE;
     }
 
     int intNum = digitalPinToInterrupt(pin);

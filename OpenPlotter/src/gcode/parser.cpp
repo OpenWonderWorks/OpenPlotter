@@ -20,6 +20,7 @@
 
 #include "parser.h"
 #include "../utils/logger.h"
+#include "../../openplotter_config.h"
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -328,7 +329,7 @@ float GCodeParser::readFloat(const char* line, uint8_t& pos) {
     buf[i] = '\0';
 
     if (i == 0) return 0.0f;
-    return strtof(buf, nullptr);
+    return strtod(buf, nullptr);
 }
 
 int32_t GCodeParser::readInt(const char* line, uint8_t& pos) {

@@ -8,7 +8,7 @@
 #define TOOL_CONTROLLER_H
 
 #include "../hal/hal.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include <stdint.h>
 
 /**

@@ -5,16 +5,17 @@
  */
 
 #include "tmc_driver.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include "../utils/logger.h"
 #include "../hal/hal.h"
 #include "../system/settings.h"
 #include <SPI.h>
-#include <TMCStepper.h>
 
 #if !defined(BOARD_ESP32) && !defined(BOARD_NATIVE)
 #include <SoftwareSerial.h>
 #endif
+
+#include <TMCStepper.h>
 
 extern HAL* hal;
 extern Settings settings;
@@ -139,7 +140,7 @@ void initTmcDrivers() {
         switch (driverTypes[i]) {
             case DRIVER_TMC2208:
                 if (uartStream) {
-                    drivers[i].tmc2208 = new TMC2208Stepper(uartStream, senseResistor, driverAddresses[i]);
+                    drivers[i].tmc2208 = new TMC2208Stepper(uartStream, senseResistor);
                     drivers[i].tmc2208->begin();
                     drivers[i].tmc2208->rms_current(runCurrent, holdRatio);
                     drivers[i].tmc2208->microsteps(microsteps);
@@ -168,7 +169,7 @@ void initTmcDrivers() {
                 drivers[i].tmc2130->rms_current(runCurrent, holdRatio);
                 drivers[i].tmc2130->microsteps(microsteps);
                 drivers[i].tmc2130->toff(4);
-                drivers[i].tmc2130->en_spreadCycle(!stealth);
+                drivers[i].tmc2130->en_pwm_mode(stealth);
                 LOG_INFO("DriverMgr: Axis %s (TMC2130 SPI) initialized at %d mA", axisNames[i], runCurrent);
                 break;
 
@@ -178,7 +179,7 @@ void initTmcDrivers() {
                 drivers[i].tmc5160->rms_current(runCurrent, holdRatio);
                 drivers[i].tmc5160->microsteps(microsteps);
                 drivers[i].tmc5160->toff(4);
-                drivers[i].tmc5160->en_spreadCycle(!stealth);
+                drivers[i].tmc5160->en_pwm_mode(stealth);
                 LOG_INFO("DriverMgr: Axis %s (TMC5160 High-Current SPI) initialized at %d mA", axisNames[i], runCurrent);
                 break;
         }
@@ -204,7 +205,6 @@ void configureTmcForHoming(uint8_t axis, bool enableHoming) {
                     drivers[axis].tmc2209->SGTHRS(threshold);
                     drivers[axis].tmc2209->en_spreadCycle(true); // StallGuard requires SpreadCycle
                     drivers[axis].tmc2209->TCOOLTHRS(0xFFFFF); // StallGuard active at all speeds
-                    drivers[axis].tmc2209->diag1_stall(true);   // Output stall on DIAG pin
                 } else {
                     // Restore defaults
                     drivers[axis].tmc2209->rms_current(runCurrent, holdRatio);
@@ -218,14 +218,14 @@ void configureTmcForHoming(uint8_t axis, bool enableHoming) {
             if (drivers[axis].tmc2130) {
                 if (enableHoming) {
                     drivers[axis].tmc2130->rms_current(homingCurrent);
-                    drivers[axis].tmc2130->sg_stall_value(threshold); // TMC2130 StallGuard sensitivity
-                    drivers[axis].tmc2130->en_spreadCycle(true);
+                    drivers[axis].tmc2130->sgt(threshold); // TMC2130 StallGuard sensitivity
+                    drivers[axis].tmc2130->en_pwm_mode(false); // Disable stealth for StallGuard
                     drivers[axis].tmc2130->TCOOLTHRS(0xFFFFF);
                     drivers[axis].tmc2130->diag1_stall(true);
                 } else {
                     drivers[axis].tmc2130->rms_current(runCurrent, holdRatio);
-                    drivers[axis].tmc2130->sg_stall_value(0);
-                    drivers[axis].tmc2130->en_spreadCycle(!stealth);
+                    drivers[axis].tmc2130->sgt(0);
+                    drivers[axis].tmc2130->en_pwm_mode(stealth);
                 }
             }
             break;
@@ -234,14 +234,14 @@ void configureTmcForHoming(uint8_t axis, bool enableHoming) {
             if (drivers[axis].tmc5160) {
                 if (enableHoming) {
                     drivers[axis].tmc5160->rms_current(homingCurrent);
-                    drivers[axis].tmc5160->sg_stall_value(threshold); // TMC5160 StallGuard sensitivity
-                    drivers[axis].tmc5160->en_spreadCycle(true);
+                    drivers[axis].tmc5160->sgt(threshold); // TMC5160 StallGuard sensitivity
+                    drivers[axis].tmc5160->en_pwm_mode(false); // Disable stealth for StallGuard
                     drivers[axis].tmc5160->TCOOLTHRS(0xFFFFF);
                     drivers[axis].tmc5160->diag0_stall(true);
                 } else {
                     drivers[axis].tmc5160->rms_current(runCurrent, holdRatio);
-                    drivers[axis].tmc5160->sg_stall_value(0);
-                    drivers[axis].tmc5160->en_spreadCycle(!stealth);
+                    drivers[axis].tmc5160->sgt(0);
+                    drivers[axis].tmc5160->en_pwm_mode(stealth);
                 }
             }
             break;
@@ -279,8 +279,8 @@ void updateTmcStealthChop(bool enable) {
         switch (driverTypes[i]) {
             case DRIVER_TMC2208: if (drivers[i].tmc2208) drivers[i].tmc2208->en_spreadCycle(!enable); break;
             case DRIVER_TMC2209: if (drivers[i].tmc2209) drivers[i].tmc2209->en_spreadCycle(!enable); break;
-            case DRIVER_TMC2130: if (drivers[i].tmc2130) drivers[i].tmc2130->en_spreadCycle(!enable); break;
-            case DRIVER_TMC5160: if (drivers[i].tmc5160) drivers[i].tmc5160->en_spreadCycle(!enable); break;
+            case DRIVER_TMC2130: if (drivers[i].tmc2130) drivers[i].tmc2130->en_pwm_mode(enable); break;
+            case DRIVER_TMC5160: if (drivers[i].tmc5160) drivers[i].tmc5160->en_pwm_mode(enable); break;
         }
     }
 }

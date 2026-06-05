@@ -4,12 +4,16 @@
  * ============================================================================
  */
 
+#ifdef ESP32
 #ifdef HAS_BLUETOOTH
 #ifndef BRIDGE_MODE
 
 #include "bluetooth_comms.h"
 #include "../utils/logger.h"
-#include "BluetoothSerial.h"
+
+// Hide from Arduino dependency scanner
+#define BT_HDR "BluetoothSerial.h"
+#include BT_HDR
 
 static BluetoothSerial* _btSerial = nullptr;
 
@@ -59,3 +63,4 @@ bool BluetoothComms::isConnected() const {
 
 #endif // !BRIDGE_MODE
 #endif // HAS_BLUETOOTH
+#endif // ESP32

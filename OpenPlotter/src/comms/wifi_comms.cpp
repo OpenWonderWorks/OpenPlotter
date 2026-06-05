@@ -14,18 +14,27 @@
  * ============================================================================
  */
 
+#ifdef ESP32
 #ifdef HAS_WIFI
 #ifndef BRIDGE_MODE  // Full WiFi mode — not bridge mode
 
 #include "wifi_comms.h"
 #include "../utils/logger.h"
 
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <ESPAsyncWebServer.h>
-#include <AsyncTCP.h>
-#include <LittleFS.h>
-#include <ArduinoJson.h>
+// Hide ESP32 specific headers from Arduino CLI dependency scanner on AVR
+#define WIFI_HDR <WiFi.h>
+#define ESPMDNS_HDR <ESPmDNS.h>
+#define ESPASYNCTCP_HDR <AsyncTCP.h>
+#define ESPASYNCWEBSERVER_HDR <ESPAsyncWebServer.h>
+#define LITTLEFS_HDR <LittleFS.h>
+#define ARDUINOJSON_HDR <ArduinoJson.h>
+
+#include WIFI_HDR
+#include ESPMDNS_HDR
+#include ESPASYNCTCP_HDR
+#include ESPASYNCWEBSERVER_HDR
+#include LITTLEFS_HDR
+#include ARDUINOJSON_HDR
 
 // ── Static server instances ─────────────────────────────────────────────────
 static AsyncWebServer* _server = nullptr;
@@ -252,3 +261,4 @@ void WifiComms::setMode(uint8_t mode) {
 
 #endif // !BRIDGE_MODE
 #endif // HAS_WIFI
+#endif // ESP32

@@ -13,6 +13,7 @@
 #define COMMANDS_H
 
 #include <stdint.h>
+#include <string.h>
 
 // ── G-code Command Types ────────────────────────────────────────────────────
 enum class GCode : uint8_t {
@@ -32,7 +33,7 @@ enum class GCode : uint8_t {
 };
 
 // ── M-code Command Types ────────────────────────────────────────────────────
-enum class MCode : uint8_t {
+enum class MCode : uint16_t {
     M0   = 0,     // Program pause (wait for resume)
     M1   = 1,     // Optional pause
     M2   = 2,     // Program end

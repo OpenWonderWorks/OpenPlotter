@@ -8,7 +8,7 @@
 #define KINEMATICS_H
 
 #include "../gcode/commands.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include "../utils/math_utils.h"
 
 /**

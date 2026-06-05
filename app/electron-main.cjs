@@ -84,10 +84,27 @@ ipcMain.handle('flash-firmware', async (event, { boardType, hexContent, port }) 
       fs.writeFileSync(tempPath, hexContent);
       
       let cmd = "";
+      let avrdudeExe = 'avrdude';
+      
+      // On Windows, try to find Arduino's bundled avrdude
+      if (process.platform === 'win32') {
+        const arduino15 = path.join(process.env.LOCALAPPDATA, 'Arduino15', 'packages', 'arduino', 'tools', 'avrdude');
+        if (fs.existsSync(arduino15)) {
+          const versions = fs.readdirSync(arduino15);
+          if (versions.length > 0) {
+            const avrdudePath = path.join(arduino15, versions[0], 'bin', 'avrdude.exe');
+            const confPath = path.join(arduino15, versions[0], 'etc', 'avrdude.conf');
+            if (fs.existsSync(avrdudePath)) {
+              avrdudeExe = `"${avrdudePath}" -C "${confPath}"`;
+            }
+          }
+        }
+      }
+
       if (boardType === 'mega') {
-        cmd = `avrdude -v -patmega2560 -cwiring -P${port} -b115200 -D "-Uflash:w:${tempPath}:i"`;
+        cmd = `${avrdudeExe} -v -patmega2560 -cwiring -P${port} -b115200 -D "-Uflash:w:${tempPath}:i"`;
       } else if (boardType === 'nano') {
-        cmd = `avrdude -v -patmega328p -carduino -P${port} -b115200 -D "-Uflash:w:${tempPath}:i"`;
+        cmd = `${avrdudeExe} -v -patmega328p -carduino -P${port} -b115200 -D "-Uflash:w:${tempPath}:i"`;
       } else {
         return reject("Unsupported board type");
       }

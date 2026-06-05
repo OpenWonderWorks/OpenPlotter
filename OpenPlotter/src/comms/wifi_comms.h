@@ -10,7 +10,7 @@
 #ifdef HAS_WIFI
 
 #include "../hal/hal.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include <stdint.h>
 
 class WifiComms {

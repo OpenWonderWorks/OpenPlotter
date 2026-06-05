@@ -15,7 +15,7 @@
 
 #include "../gcode/commands.h"
 #include "../utils/ring_buffer.h"
-#include "config.h"
+#include "../../openplotter_config.h"
 #include <stdint.h>
 
 // ── Motion Block ────────────────────────────────────────────────────────────
