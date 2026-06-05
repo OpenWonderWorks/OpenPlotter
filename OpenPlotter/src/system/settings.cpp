@@ -63,6 +63,10 @@ void Settings::resetDefaults() {
     _tmcHoldCurrent = DEFAULT_TMC_HOLD_CURRENT_MA;
     _tmcMicrosteps = DEFAULT_TMC_MICROSTEPS;
     _tmcStealthChop = DEFAULT_TMC_STEALTHCHOP;
+    _driverType[0] = DEFAULT_DRIVER_X;
+    _driverType[1] = DEFAULT_DRIVER_Y;
+    _driverType[2] = DEFAULT_DRIVER_Z;
+    _driverType[3] = DEFAULT_DRIVER_C;
 }
 
 void Settings::load() {
@@ -104,6 +108,11 @@ void Settings::load() {
     _tmcMicrosteps = (uint16_t)hal->storageReadByte(SET_TMC_MICROSTEPS) |
                      ((uint16_t)hal->storageReadByte(SET_TMC_MICROSTEPS + 1) << 8);
     _tmcStealthChop = hal->storageReadByte(SET_TMC_STEALTHCHOP) > 0;
+
+    _driverType[0] = hal->storageReadByte(SET_DRIVER_X);
+    _driverType[1] = hal->storageReadByte(SET_DRIVER_Y);
+    _driverType[2] = hal->storageReadByte(SET_DRIVER_Z);
+    _driverType[3] = hal->storageReadByte(SET_DRIVER_C);
 }
 
 void Settings::save() {
@@ -146,6 +155,11 @@ void Settings::save() {
     hal->storageWriteByte(SET_TMC_MICROSTEPS + 1, (uint8_t)((_tmcMicrosteps >> 8) & 0xFF));
     hal->storageWriteByte(SET_TMC_STEALTHCHOP, _tmcStealthChop ? 1 : 0);
     
+    hal->storageWriteByte(SET_DRIVER_X, _driverType[0]);
+    hal->storageWriteByte(SET_DRIVER_Y, _driverType[1]);
+    hal->storageWriteByte(SET_DRIVER_Z, _driverType[2]);
+    hal->storageWriteByte(SET_DRIVER_C, _driverType[3]);
+    
     hal->storageWriteByte(SET_MAGIC, SETTINGS_MAGIC_VALUE);
     hal->storageCommit();
 
@@ -167,6 +181,10 @@ float Settings::maxTravel(uint8_t axis) const {
 
 bool Settings::invertAxis(uint8_t axis) const {
     return (axis < 4) ? _invertAxis[axis] : false;
+}
+
+uint8_t Settings::driverType(uint8_t axis) const {
+    return (axis < 4) ? _driverType[axis] : 0;
 }
 
 // Setters
@@ -219,6 +237,10 @@ void Settings::setTmcStealthChop(bool enable) {
     updateTmcStealthChop(_tmcStealthChop);
 }
 
+void Settings::setDriverType(uint8_t axis, uint8_t type) {
+    if (axis < 4) _driverType[axis] = type;
+}
+
 // Set by $ number
 bool Settings::setByNumber(uint16_t number, float value) {
     switch (number) {
@@ -254,6 +276,10 @@ bool Settings::setByNumber(uint16_t number, float value) {
         case 163: setTmcHoldCurrent((uint16_t)value); return true;
         case 164: setTmcMicrosteps((uint16_t)value); return true;
         case 165: setTmcStealthChop(value > 0); return true;
+        case 166: setDriverType(0, (uint8_t)value); return true;
+        case 167: setDriverType(1, (uint8_t)value); return true;
+        case 168: setDriverType(2, (uint8_t)value); return true;
+        case 169: setDriverType(3, (uint8_t)value); return true;
         default: return false;
     }
 }
@@ -293,4 +319,8 @@ void Settings::printAll() {
     snprintf(buf, sizeof(buf), "$163=%d (TMC hold current mA)", _tmcHoldCurrent); hal->serialPrintln(buf);
     snprintf(buf, sizeof(buf), "$164=%d (TMC microsteps)", _tmcMicrosteps); hal->serialPrintln(buf);
     snprintf(buf, sizeof(buf), "$165=%d (TMC StealthChop: 0=spreadCycle 1=stealthChop)", _tmcStealthChop ? 1 : 0); hal->serialPrintln(buf);
+    snprintf(buf, sizeof(buf), "$166=%d (Driver X: 0=A4988 1=DRV8825 2=TMC2208 3=TMC2209 4=TMC2130 5=TMC5160)", _driverType[0]); hal->serialPrintln(buf);
+    snprintf(buf, sizeof(buf), "$167=%d (Driver Y)", _driverType[1]); hal->serialPrintln(buf);
+    snprintf(buf, sizeof(buf), "$168=%d (Driver Z)", _driverType[2]); hal->serialPrintln(buf);
+    snprintf(buf, sizeof(buf), "$169=%d (Driver C)", _driverType[3]); hal->serialPrintln(buf);
 }

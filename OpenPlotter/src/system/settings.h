@@ -46,6 +46,10 @@ enum SettingIndex : uint16_t {
     SET_TMC_HOLD_CURRENT     = 79,   // $163 (2 bytes)
     SET_TMC_MICROSTEPS       = 81,   // $164 (2 bytes)
     SET_TMC_STEALTHCHOP      = 83,   // $165 (1 byte)
+    SET_DRIVER_X             = 84,   // $166 (1 byte)
+    SET_DRIVER_Y             = 85,   // $167 (1 byte)
+    SET_DRIVER_Z             = 86,   // $168 (1 byte)
+    SET_DRIVER_C             = 87,   // $169 (1 byte)
     SET_MAGIC                = 100,  // Magic byte to detect first boot
     SETTINGS_SIZE            = 104   // Total bytes used
 };
@@ -83,6 +87,7 @@ public:
     uint16_t tmcHoldCurrent() const { return _tmcHoldCurrent; }
     uint16_t tmcMicrosteps() const { return _tmcMicrosteps; }
     bool tmcStealthChop() const { return _tmcStealthChop; }
+    uint8_t driverType(uint8_t axis) const;
 
     // Setters (also persist to storage)
     void setStepsPerMm(uint8_t axis, float value);
@@ -103,6 +108,7 @@ public:
     void setTmcHoldCurrent(uint16_t current);
     void setTmcMicrosteps(uint16_t microsteps);
     void setTmcStealthChop(bool enable);
+    void setDriverType(uint8_t axis, uint8_t type);
 
     /**
      * Set a setting by its $ number (e.g., $100=80.0).
@@ -137,6 +143,7 @@ private:
     uint16_t _tmcHoldCurrent;
     uint16_t _tmcMicrosteps;
     bool _tmcStealthChop;
+    uint8_t _driverType[4];
 };
 
 #endif // SETTINGS_H

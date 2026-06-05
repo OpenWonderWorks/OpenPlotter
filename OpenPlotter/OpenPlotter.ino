@@ -34,36 +34,36 @@
 #include "config.h"
 
 // ── HAL ─────────────────────────────────────────────────────────────────────
-#include "hal/hal.h"
+#include "src/hal/hal.h"
 
 #if defined(BOARD_ESP32)
-    #include "hal/hal_esp32.h"
+    #include "src/hal/hal_esp32.h"
 #elif defined(BOARD_MEGA) || defined(BOARD_NANO)
-    #include "hal/hal_avr.h"
+    #include "src/hal/hal_avr.h"
 #endif
 
 // ── Subsystems ──────────────────────────────────────────────────────────────
-#include "gcode/parser.h"
-#include "motion/planner.h"
-#include "motion/stepper.h"
-#include "motion/kinematics.h"
-#include "homing/homing.h"
-#include "tools/tool_controller.h"
-#include "tools/pen_servo.h"
-#include "tools/blade_solenoid.h"
-#include "tools/tangential_knife.h"
-#include "comms/serial_comms.h"
-#include "system/settings.h"
-#include "system/status.h"
-#include "system/safety.h"
-#include "utils/logger.h"
-#include "motion/tmc_driver.h"
+#include "src/gcode/parser.h"
+#include "src/motion/planner.h"
+#include "src/motion/stepper.h"
+#include "src/motion/kinematics.h"
+#include "src/homing/homing.h"
+#include "src/tools/tool_controller.h"
+#include "src/tools/pen_servo.h"
+#include "src/tools/blade_solenoid.h"
+#include "src/tools/tangential_knife.h"
+#include "src/comms/serial_comms.h"
+#include "src/system/settings.h"
+#include "src/system/status.h"
+#include "src/system/safety.h"
+#include "src/utils/logger.h"
+#include "src/motion/tmc_driver.h"
 
 #ifdef HAS_WIFI
-    #include "comms/wifi_comms.h"
+    #include "src/comms/wifi_comms.h"
 #endif
 #ifdef HAS_BLUETOOTH
-    #include "comms/bluetooth_comms.h"
+    #include "src/comms/bluetooth_comms.h"
 #endif
 
 // ── Global HAL Instance ─────────────────────────────────────────────────────

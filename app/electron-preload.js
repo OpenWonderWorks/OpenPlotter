@@ -1,5 +1,9 @@
-// Preload script for Electron
-// Exposes any necessary IPC bindings if needed in the future
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  flashFirmware: (boardType, hexContent, port) => ipcRenderer.invoke('flash-firmware', { boardType, hexContent, port })
+});
+
 window.addEventListener('DOMContentLoaded', () => {
   console.log('OpenPlotter Electron Preload Loaded');
 });

@@ -162,6 +162,7 @@
           <div class="tab-header active" data-tab="tab-control">Control</div>
           <div class="tab-header" data-tab="tab-console">Console</div>
           <div class="tab-header" data-tab="tab-settings">Settings</div>
+          <div class="tab-header" data-tab="tab-firmware">Firmware</div>
         </div>
 
         <!-- Tab 1: Manual Control & Status -->
@@ -251,6 +252,31 @@
           <div id="settings-actions" style="display: none; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px; gap: 8px; grid-template-columns: 1fr 1fr;">
             <button id="btn-settings-save" class="btn btn-primary">Save to EEPROM</button>
             <button id="btn-settings-reset" class="btn btn-danger">Factory Reset</button>
+          </div>
+        </div>
+
+        <!-- Tab 4: Firmware Flasher -->
+        <div class="tab-content" id="tab-firmware" style="padding: 16px;">
+          <div class="panel">
+            <h2 class="panel-title">Flash Firmware</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">Flash a pre-compiled OpenPlotter firmware. Customize settings in the Settings tab after flashing.</p>
+            
+            <div class="form-group">
+              <label for="flash-board-type">Target Board</label>
+              <select id="flash-board-type">
+                <option value="mega">Arduino Mega 2560 (RAMPS 1.4)</option>
+                <option value="nano">Arduino Nano</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="flash-file">Firmware HEX File</label>
+              <input type="file" id="flash-file" accept=".hex" style="color: var(--text-color); font-size: 0.85rem;" />
+            </div>
+
+            <button id="btn-flash-firmware" class="btn btn-accent btn-full" style="margin-top: 16px;">Flash Firmware</button>
+            
+            <div id="flash-status" style="margin-top: 12px; font-size: 0.85rem; color: var(--text-secondary); text-align: center;"></div>
           </div>
         </div>
       </aside>

@@ -992,3 +992,73 @@ function init() {
 
 // Run init
 init();
+// ==========================================
+// Firmware Flasher Logic
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+  const btnFlash = document.getElementById('btn-flash-firmware');
+  const flashStatus = document.getElementById('flash-status');
+  const fileInput = document.getElementById('flash-file');
+  const boardSelect = document.getElementById('flash-board-type');
+
+  if (btnFlash) {
+    btnFlash.addEventListener('click', async () => {
+      if (!window.electronAPI) {
+        flashStatus.innerText = "Error: Not running in Electron desktop app.";
+        return;
+      }
+      
+      if (!appState.port) {
+        flashStatus.innerText = "Error: Please connect to a COM port first in the top bar.";
+        return;
+      }
+
+      if (fileInput.files.length === 0) {
+        flashStatus.innerText = "Error: Please select a firmware .hex file first.";
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+      
+      reader.onload = async (e) => {
+        try {
+          flashStatus.innerText = "Flashing... Do not disconnect the board!";
+          btnFlash.disabled = true;
+          
+          const hexContent = e.target.result;
+          const boardType = boardSelect.value;
+          // Note: we disconnect the current port before flashing so avrdude can use it
+          if (appState.port && appState.port.close) {
+             await appState.port.close();
+             appState.connected = false;
+             updateConnectionUI();
+          }
+          
+          // Electron will look for the COM port name. Wait, WebSerial port objects don't expose COM name easily in Chrome.
+          // But Electron handles this via the IPC. We pass the port name if we know it.
+          // Since we connected via WebSerial, getting the actual COM port name is tricky.
+          // In a real app, the backend would list ports. For this prototype, we'll ask the user.
+          
+          // Actually, let's just use the ipcRenderer.
+          // We can prompt the user for the COM port name since WebSerial hides it.
+          const comPortName = prompt("Enter your exact COM port name for avrdude (e.g. COM3 or /dev/ttyUSB0):", "COM3");
+          if (!comPortName) {
+             flashStatus.innerText = "Flashing cancelled.";
+             btnFlash.disabled = false;
+             return;
+          }
+
+          const result = await window.electronAPI.flashFirmware(boardType, hexContent, comPortName);
+          flashStatus.innerText = result;
+        } catch (error) {
+          flashStatus.innerText = "Error: " + error;
+        } finally {
+          btnFlash.disabled = false;
+        }
+      };
+      
+      reader.readAsText(file);
+    });
+  }
+});

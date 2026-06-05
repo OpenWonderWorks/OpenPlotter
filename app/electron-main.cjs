@@ -1,5 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const { exec } = require('child_process');
 
 let mainWindow;
 
@@ -64,6 +67,37 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+    }
+  });
+});
+
+ipcMain.handle('flash-firmware', async (event, { boardType, hexContent, port }) => {
+  return new Promise((resolve, reject) => {
+    try {
+      if (!port) return reject("Please select a COM port first.");
+      
+      const tempPath = path.join(os.tmpdir(), `openplotter_${boardType}.hex`);
+      fs.writeFileSync(tempPath, hexContent);
+      
+      let cmd = "";
+      if (boardType === 'mega') {
+        cmd = `avrdude -v -patmega2560 -cwiring -P${port} -b115200 -D "-Uflash:w:${tempPath}:i"`;
+      } else if (boardType === 'nano') {
+        cmd = `avrdude -v -patmega328p -carduino -P${port} -b115200 -D "-Uflash:w:${tempPath}:i"`;
+      } else {
+        return reject("Unsupported board type");
+      }
+      
+      exec(cmd, (error, stdout, stderr) => {
+        if (error) {
+          console.error(stderr);
+          reject("avrdude failed or not found. Please install Arduino IDE/avrdude and ensure it is in your system PATH.");
+        } else {
+          resolve('Firmware flashed successfully!');
+        }
+      });
+    } catch (e) {
+      reject(e.message);
     }
   });
 });
