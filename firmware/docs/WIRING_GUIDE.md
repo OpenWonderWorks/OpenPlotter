@@ -85,14 +85,38 @@ This is the recommended setup for cutting plotters. The Arduino Mega runs the co
 4. Connect the **DIAG** pin of the Y driver to the **Y_MIN Signal pin** (Pin 14).
 5. In `config.h`, set `#define HOMING_METHOD 1` to enable StallGuard sensorless homing.
 
-#### D. Pen/Blade Servo Connection
+#### D. TMC2130 & TMC5160 SPI Control Wiring (for SPI drivers & Sensorless Homing)
+TMC2130 and TMC5160 drivers utilize SPI (Serial Peripheral Interface) for configuration, diagnostics, and high-performance StallGuard homing. 
+
+1. **Shared SPI Bus Connections**:
+   Connect the SPI pins of all SPI drivers in parallel to the Arduino Mega's hardware SPI pins (located on the ICSP header or AUX-3):
+   - **SCK (Clock)**: Connect driver SCK/CLK pin to **Mega Pin 52** (AUX-3 Pin 4).
+   - **SDI (MOSI)**: Connect driver SDI/MOSI pin to **Mega Pin 51** (AUX-3 Pin 3).
+   - **SDO (MISO)**: Connect driver SDO/MISO pin to **Mega Pin 50** (AUX-3 Pin 2).
+   - **GND/VCC**: Ensure the driver's logic ground and 5V are connected to RAMPS logic power.
+
+2. **Chip Select (CS) Pin Connections**:
+   Each driver requires a dedicated Chip Select pin to enable communication. Connect as follows:
+   - **X Axis Driver (CS)**: Connect to **Mega Pin 53** (SS pin).
+     *Note: If using an SD Card, Pin 53 is also used for SD card Chip Select. If you use both, you MUST reassign `X_CS_PIN` in `config.h` to an unused pin (e.g. Pin 42 or 44 on AUX-2).*
+   - **Y Axis Driver (CS)**: Connect to **Mega Pin 49** (AUX-4 Pin 4).
+   - **Z Axis Driver (CS)**: Connect to **Mega Pin 40** (AUX-2 Pin 1).
+   - **C Axis Driver (CS)**: Connect to **Mega Pin 41** (AUX-2 Pin 2).
+
+3. **StallGuard / DIAG Homing Connections**:
+   To enable sensorless StallGuard homing:
+   - **TMC2130**: Connect the **DIAG1** pin of the X driver to **Mega Pin 3** (X_MIN) and the Y driver to **Mega Pin 14** (Y_MIN).
+   - **TMC5160**: Connect the **DIAG0** pin (labeled DIAG or DIAG0 on most breakouts) of the X driver to **Mega Pin 3** (X_MIN) and the Y driver to **Mega Pin 14** (Y_MIN).
+   - In `config.h`, set `#define DEFAULT_HOMING_METHOD 1` and select the appropriate driver type (4 for TMC2130, 5 for TMC5160).
+
+#### E. Pen/Blade Servo Connection
 1. The servo connects to the **SERVO-0** pins located on the far left of the RAMPS 1.4 shield.
 2. Connect the **Brown/Black** ground wire to the `GND` pin.
 3. Connect the **Red** power wire to the `5V` pin.
    - **NOTE**: The RAMPS 5V rail requires power. Make sure you place a jumper between the `5V` and `VCC` pins on the RAMPS board to route USB power to the servo, or use an external 5V BEC regulator if the servo draws too much current and resets the Mega.
 4. Connect the **Orange/Yellow** signal wire to the signal pin (Arduino Mega pin 11).
 
-#### E. Mega to ESP32 Serial Bridge Connections
+#### F. Mega to ESP32 Serial Bridge Connections
 Connect the Mega to the ESP32 DevKit to allow wireless control:
 1. Connect **Mega TX1 (Pin 18)** to **ESP32 RX2 (GPIO 16)**.
 2. Connect **Mega RX1 (Pin 19)** to **ESP32 TX2 (GPIO 17)**.

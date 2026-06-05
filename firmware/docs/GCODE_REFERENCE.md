@@ -78,7 +78,11 @@ Write configuration using `$number=value` (e.g. `$100=80`).
 | **$151** | mm/min | Homing feed rate (slow precision touch speed) |
 | **$152** | mm | Homing pull-off (backing off distance from switches) |
 | **$160** | integer | Homing method (0 = limit switches, 1 = StallGuard sensorless) |
-| **$161** | 0-255 | StallGuard motor stall threshold (TMC2209 only) |
+| **$161** | 0-255 | StallGuard motor stall threshold (TMC2209/TMC2130/TMC5160) |
+| **$162** | mA | TMC Driver running current (RMS) |
+| **$163** | mA | TMC Driver idle holding current |
+| **$164** | integer | TMC Driver microstepping factor (e.g. 16, 32, 64) |
+| **$165** | boolean | TMC StealthChop active (0 = SpreadCycle, 1 = StealthChop) |
 | **$170** | degrees | Servo up angle |
 | **$171** | degrees | Servo down angle |
 | **$172** | ms | Wait delay after activating servo pen state |

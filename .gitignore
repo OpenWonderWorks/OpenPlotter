@@ -20,6 +20,7 @@ firmware/build/
 # ── Node / Vite (companion app) ──
 app/node_modules/
 app/dist/
+app/dist-desktop/
 app/.cache/
 
 # ── OS ──

@@ -57,6 +57,7 @@
 #include "system/status.h"
 #include "system/safety.h"
 #include "utils/logger.h"
+#include "motion/tmc_driver.h"
 
 #ifdef HAS_WIFI
     #include "comms/wifi_comms.h"
@@ -81,7 +82,7 @@ static Stepper         stepper;
 static Kinematics      kinematics;
 static HomingManager   homing;
 static SerialComms     serialComms;
-static Settings        settings;
+Settings        settings;
 static Status          status;
 static Safety          safety;
 
@@ -146,6 +147,9 @@ void setup() {
 
     // 3. Load settings from EEPROM/NVS
     settings.init();
+
+    // Initialize TMC Stepper Drivers (UART/SPI)
+    initTmcDrivers();
 
     // 4. Initialize motion planner
     float stepsPerMm[4] = {

@@ -14,14 +14,47 @@
 #define OPENPLOTTER_CONFIG_H
 
 // ── Board Selection ─────────────────────────────────────────────────────────
-// Normally set by platformio.ini build flags. Uncomment ONE if building
-// manually with Arduino IDE:
-// #define BOARD_MEGA
-// #define BOARD_NANO
-// #define BOARD_ESP32
-// #define SHIELD_RAMPS14
-// #define HYBRID_MODE
-// #define BRIDGE_MODE
+/**
+ * OpenPlotter hardware selector.
+ * Uncomment ONE of the following profiles if compiling manually (e.g., in Arduino IDE).
+ * If compiling with PlatformIO, leave them commented out; PlatformIO selects 
+ * environments automatically via platformio.ini.
+ */
+// #define BOARD_MEGA_STANDALONE    // Standalone Arduino Mega 2560 (No ESP32)
+// #define BOARD_MEGA_RAMPS14       // Arduino Mega 2560 + RAMPS 1.4 Shield (No ESP32) - RECOMMENDED
+// #define BOARD_NANO_STANDALONE    // Standalone Arduino Nano (No ESP32)
+// #define BOARD_ESP32_STANDALONE   // Standalone ESP32 (No Arduino Mega/Nano)
+// #define BOARD_MEGA_ESP32_HYBRID  // Arduino Mega 2560 (Motion) + ESP32 (WiFi bridge)
+// #define BOARD_NANO_ESP32_HYBRID  // Arduino Nano (Motion) + ESP32 (WiFi bridge)
+
+// Resolve selection profiles to macros
+#if defined(BOARD_MEGA_STANDALONE)
+    #define BOARD_MEGA
+#elif defined(BOARD_MEGA_RAMPS14)
+    #define BOARD_MEGA
+    #define SHIELD_RAMPS14
+    #define HAS_TMC_UART
+#elif defined(BOARD_NANO_STANDALONE)
+    #define BOARD_NANO
+    #define PLANNER_BUFFER_SIZE 12
+    #define SERIAL_RX_BUFFER_SIZE 128
+#elif defined(BOARD_ESP32_STANDALONE)
+    #define BOARD_ESP32
+    #define HAS_WIFI
+    #define HAS_BLUETOOTH
+    #define HAS_TMC_UART
+    #define PLANNER_BUFFER_SIZE 32
+#elif defined(BOARD_MEGA_ESP32_HYBRID)
+    #define BOARD_MEGA
+    #define SHIELD_RAMPS14
+    #define HYBRID_MODE
+    #define HAS_TMC_UART
+#elif defined(BOARD_NANO_ESP32_HYBRID)
+    #define BOARD_NANO
+    #define HYBRID_MODE
+    #define PLANNER_BUFFER_SIZE 12
+    #define SERIAL_RX_BUFFER_SIZE 128
+#endif
 
 // ── Include pin definitions for selected board ──────────────────────────────
 #if defined(SHIELD_RAMPS14)
@@ -43,6 +76,26 @@
 #ifndef NUM_AXES
     #define NUM_AXES                2
 #endif
+
+// ── Stepper Driver Configuration ────────────────────────────────────────────
+// Driver type per axis: 
+// 0 = A4988, 1 = DRV8825, 2 = TMC2208 (UART), 3 = TMC2209 (UART), 4 = TMC2130 (SPI), 5 = TMC5160 (SPI)
+#define DEFAULT_DRIVER_X            3   // Default: TMC2209 for X axis
+#define DEFAULT_DRIVER_Y            3   // Default: TMC2209 for Y axis
+#define DEFAULT_DRIVER_Z            0   // Default: A4988 for Z axis (servo/solenoid)
+#define DEFAULT_DRIVER_C            0   // Default: A4988 for C axis (tangential rotation)
+
+// SPI CS (Chip Select) Pin Allocations (for TMC2130 & TMC5160 drivers)
+#define X_CS_PIN                    53  // SS pin on Arduino Mega 2560
+#define Y_CS_PIN                    49  // AUX-4 pin 4 on RAMPS
+#define Z_CS_PIN                    40  // AUX-2 pin 1 on RAMPS
+#define C_CS_PIN                    41  // AUX-2 pin 2 on RAMPS
+
+// TMC UART / SPI Default Drive Currents & Modes
+#define DEFAULT_TMC_RUN_CURRENT_MA  800   // mA - Running motor current
+#define DEFAULT_TMC_HOLD_CURRENT_MA 400   // mA - Idle holding current (reduces heat)
+#define DEFAULT_TMC_MICROSTEPS      16    // 16 microsteps (Bresenham sync resolution)
+#define DEFAULT_TMC_STEALTHCHOP     true  // true = silent StealthChop, false = high-torque spreadCycle
 
 // Steps per millimeter (adjust for your belt/leadscrew + microstepping)
 // Common: 20-tooth GT2 pulley + 1/16 step = 80 steps/mm

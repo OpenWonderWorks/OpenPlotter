@@ -24,6 +24,7 @@
 
 #include "homing.h"
 #include "../utils/logger.h"
+#include "../motion/tmc_driver.h"
 #include "config.h"
 #include <string.h>
 
@@ -382,10 +383,13 @@ static bool stallCondition(uint8_t axis, void* ctx) {
     (void)ctx;
     return _stallDetected;
 }
-#endif
 
 HomingResult HomingManager::homeSensorless(uint8_t axis) {
-#ifdef HAS_TMC_UART
+    if (!isSensorlessCapable(axis)) {
+        LOG_WARN("Sensorless homing not supported on selected driver for axis %d. Falling back to sensored.", axis);
+        return homeSensored(axis);
+    }
+
     bool homeDir = getHomeDir(axis);
     float homingSpeed = DEFAULT_SG_HOMING_SPEED; // mm/sec (constant speed required)
     float pulloffMm = DEFAULT_HOMING_PULLOFF;
@@ -397,51 +401,9 @@ HomingResult HomingManager::homeSensorless(uint8_t axis) {
     uint32_t maxSteps = (uint32_t)(DEFAULT_MAX_TRAVEL_X * stepsPerMm * 1.5f);
     uint32_t pulloffSteps = (uint32_t)(pulloffMm * stepsPerMm);
 
-    // ── Configure TMC2209 via UART ─────────────────────────────────────
-    LOG_DEBUG_HOMING("Configuring TMC2209 for sensorless homing");
-
-    // Create TMC2209 driver instance
-    // The driver address is set by MS1/MS2 pins on the physical driver
-    uint8_t driverAddr = axis; // X=0, Y=1, Z=2, C=3
-
-    #if defined(BOARD_ESP32)
-        TMC2209Stepper driver(&Serial2, 0.11f, driverAddr);
-    #else
-        // AVR: Use SoftwareSerial on TMC UART pins
-        // Note: This requires the TMC_UART_TX_PIN and TMC_UART_RX_PIN
-        SoftwareSerial tmcSerial(TMC_UART_RX_PIN, TMC_UART_TX_PIN);
-        tmcSerial.begin(TMC_BAUD_RATE);
-        TMC2209Stepper driver(&tmcSerial, 0.11f, driverAddr);
-    #endif
-
-    driver.begin();
-    hal->delayMs(10);
-
-    // Verify communication
-    if (driver.test_connection() != 0) {
-        LOG_ERROR("TMC2209 communication failed for axis %d", axis);
-        return HomingResult::TMC_COMM_ERROR;
-    }
-
-    // Save current settings
-    uint16_t originalCurrent = driver.rms_current();
-    uint8_t originalSgthrs = driver.SGTHRS();
-    bool originalStealthChop = driver.en_spreadCycle();
-
-    // Configure for sensorless homing:
-    // 1. Reduce motor current (better stall detection at lower current)
-    driver.rms_current(_sgHomingCurrent);
-
-    // 2. Enable StallGuard threshold
-    driver.SGTHRS(_sgThreshold);
-
-    // 3. Use SpreadCycle mode (StallGuard doesn't work in StealthChop)
-    driver.en_spreadCycle(true);
-
-    // 4. Configure DIAG pin output
-    driver.TCOOLTHRS(0xFFFFF); // Enable StallGuard at all speeds
-    driver.diag1_stall(true);   // DIAG pin signals stall
-
+    // ── Configure TMC driver for homing (current, StealthChop bypass, DIAG out) ──
+    LOG_DEBUG_HOMING("Configuring driver StallGuard for sensorless homing");
+    configureTmcForHoming(axis, true);
     hal->delayMs(50); // Let driver settle
 
     // ── Attach interrupt on DIAG pin ───────────────────────────────────
@@ -460,19 +422,15 @@ HomingResult HomingManager::homeSensorless(uint8_t axis) {
     // Detach interrupt
     hal->detachInterrupt(diagPin);
 
+    // Turn off StallGuard and restore normal currents
+    configureTmcForHoming(axis, false);
+
     if (_aborted) {
-        // Restore original settings
-        driver.rms_current(originalCurrent);
-        driver.SGTHRS(originalSgthrs);
-        driver.en_spreadCycle(!originalStealthChop);
         return HomingResult::ABORTED;
     }
 
     if (!_stallDetected) {
         LOG_ERROR("Sensorless homing: Stall not detected for axis %d", axis);
-        driver.rms_current(originalCurrent);
-        driver.SGTHRS(originalSgthrs);
-        driver.en_spreadCycle(!originalStealthChop);
         return HomingResult::STALL_NOT_DETECTED;
     }
 
@@ -485,17 +443,6 @@ HomingResult HomingManager::homeSensorless(uint8_t axis) {
 
     stepAxis(axis, !homeDir, homingSpeed * 0.5f, pulloffSteps, nullptr, nullptr);
 
-    // ── Restore original TMC settings ──────────────────────────────────
-    driver.rms_current(originalCurrent);
-    driver.SGTHRS(originalSgthrs);
-    driver.en_spreadCycle(!originalStealthChop);
-
     LOG_INFO("Sensorless homing: Axis %d complete", axis);
     return HomingResult::OK;
-
-#else
-    // TMC UART not available — fall back to sensored
-    LOG_WARN("Sensorless homing not available (no TMC UART). Falling back to sensored.");
-    return homeSensored(axis);
-#endif
 }

@@ -6,6 +6,7 @@
 
 #include "settings.h"
 #include "../utils/logger.h"
+#include "../motion/tmc_driver.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -58,6 +59,10 @@ void Settings::resetDefaults() {
     _invertAxis[2] = DEFAULT_INVERT_Z;
     _invertAxis[3] = DEFAULT_INVERT_C;
     _wifiMode = 0;
+    _tmcRunCurrent = DEFAULT_TMC_RUN_CURRENT_MA;
+    _tmcHoldCurrent = DEFAULT_TMC_HOLD_CURRENT_MA;
+    _tmcMicrosteps = DEFAULT_TMC_MICROSTEPS;
+    _tmcStealthChop = DEFAULT_TMC_STEALTHCHOP;
 }
 
 void Settings::load() {
@@ -90,6 +95,15 @@ void Settings::load() {
     _invertAxis[2] = hal->storageReadByte(SET_INVERT_Z);
     _invertAxis[3] = hal->storageReadByte(SET_INVERT_C);
     _wifiMode = hal->storageReadByte(SET_WIFI_MODE);
+    
+    // Load TMC settings
+    _tmcRunCurrent = (uint16_t)hal->storageReadByte(SET_TMC_RUN_CURRENT) |
+                     ((uint16_t)hal->storageReadByte(SET_TMC_RUN_CURRENT + 1) << 8);
+    _tmcHoldCurrent = (uint16_t)hal->storageReadByte(SET_TMC_HOLD_CURRENT) |
+                      ((uint16_t)hal->storageReadByte(SET_TMC_HOLD_CURRENT + 1) << 8);
+    _tmcMicrosteps = (uint16_t)hal->storageReadByte(SET_TMC_MICROSTEPS) |
+                     ((uint16_t)hal->storageReadByte(SET_TMC_MICROSTEPS + 1) << 8);
+    _tmcStealthChop = hal->storageReadByte(SET_TMC_STEALTHCHOP) > 0;
 }
 
 void Settings::save() {
@@ -122,6 +136,16 @@ void Settings::save() {
     hal->storageWriteByte(SET_INVERT_Z, _invertAxis[2]);
     hal->storageWriteByte(SET_INVERT_C, _invertAxis[3]);
     hal->storageWriteByte(SET_WIFI_MODE, _wifiMode);
+    
+    // Save TMC settings
+    hal->storageWriteByte(SET_TMC_RUN_CURRENT, (uint8_t)(_tmcRunCurrent & 0xFF));
+    hal->storageWriteByte(SET_TMC_RUN_CURRENT + 1, (uint8_t)((_tmcRunCurrent >> 8) & 0xFF));
+    hal->storageWriteByte(SET_TMC_HOLD_CURRENT, (uint8_t)(_tmcHoldCurrent & 0xFF));
+    hal->storageWriteByte(SET_TMC_HOLD_CURRENT + 1, (uint8_t)((_tmcHoldCurrent >> 8) & 0xFF));
+    hal->storageWriteByte(SET_TMC_MICROSTEPS, (uint8_t)(_tmcMicrosteps & 0xFF));
+    hal->storageWriteByte(SET_TMC_MICROSTEPS + 1, (uint8_t)((_tmcMicrosteps >> 8) & 0xFF));
+    hal->storageWriteByte(SET_TMC_STEALTHCHOP, _tmcStealthChop ? 1 : 0);
+    
     hal->storageWriteByte(SET_MAGIC, SETTINGS_MAGIC_VALUE);
     hal->storageCommit();
 
@@ -175,6 +199,26 @@ void Settings::setInvertAxis(uint8_t axis, bool invert) {
 
 void Settings::setWifiMode(uint8_t mode) { _wifiMode = mode; }
 
+void Settings::setTmcRunCurrent(uint16_t current) { 
+    _tmcRunCurrent = current; 
+    updateTmcCurrents(_tmcRunCurrent, _tmcHoldCurrent);
+}
+
+void Settings::setTmcHoldCurrent(uint16_t current) { 
+    _tmcHoldCurrent = current; 
+    updateTmcCurrents(_tmcRunCurrent, _tmcHoldCurrent);
+}
+
+void Settings::setTmcMicrosteps(uint16_t microsteps) { 
+    _tmcMicrosteps = microsteps; 
+    updateTmcMicrosteps(_tmcMicrosteps);
+}
+
+void Settings::setTmcStealthChop(bool enable) { 
+    _tmcStealthChop = enable; 
+    updateTmcStealthChop(_tmcStealthChop);
+}
+
 // Set by $ number
 bool Settings::setByNumber(uint16_t number, float value) {
     switch (number) {
@@ -206,6 +250,10 @@ bool Settings::setByNumber(uint16_t number, float value) {
         case 182: setInvertAxis(2, value > 0); return true;
         case 183: setInvertAxis(3, value > 0); return true;
         case 190: setWifiMode((uint8_t)value); return true;
+        case 162: setTmcRunCurrent((uint16_t)value); return true;
+        case 163: setTmcHoldCurrent((uint16_t)value); return true;
+        case 164: setTmcMicrosteps((uint16_t)value); return true;
+        case 165: setTmcStealthChop(value > 0); return true;
         default: return false;
     }
 }
@@ -241,4 +289,8 @@ void Settings::printAll() {
     snprintf(buf, sizeof(buf), "$182=%d (invert Z)", _invertAxis[2]); hal->serialPrintln(buf);
     snprintf(buf, sizeof(buf), "$183=%d (invert C)", _invertAxis[3]); hal->serialPrintln(buf);
     snprintf(buf, sizeof(buf), "$190=%d (WiFi mode: 0=AP 1=STA)", _wifiMode); hal->serialPrintln(buf);
+    snprintf(buf, sizeof(buf), "$162=%d (TMC run current mA)", _tmcRunCurrent); hal->serialPrintln(buf);
+    snprintf(buf, sizeof(buf), "$163=%d (TMC hold current mA)", _tmcHoldCurrent); hal->serialPrintln(buf);
+    snprintf(buf, sizeof(buf), "$164=%d (TMC microsteps)", _tmcMicrosteps); hal->serialPrintln(buf);
+    snprintf(buf, sizeof(buf), "$165=%d (TMC StealthChop: 0=spreadCycle 1=stealthChop)", _tmcStealthChop ? 1 : 0); hal->serialPrintln(buf);
 }

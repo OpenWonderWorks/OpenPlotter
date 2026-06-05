@@ -42,6 +42,10 @@ enum SettingIndex : uint16_t {
     SET_INVERT_Z             = 74,   // $182 (1 byte)
     SET_INVERT_C             = 75,   // $183 (1 byte)
     SET_WIFI_MODE            = 76,   // $190 (1 byte)
+    SET_TMC_RUN_CURRENT      = 77,   // $162 (2 bytes)
+    SET_TMC_HOLD_CURRENT     = 79,   // $163 (2 bytes)
+    SET_TMC_MICROSTEPS       = 81,   // $164 (2 bytes)
+    SET_TMC_STEALTHCHOP      = 83,   // $165 (1 byte)
     SET_MAGIC                = 100,  // Magic byte to detect first boot
     SETTINGS_SIZE            = 104   // Total bytes used
 };
@@ -75,6 +79,10 @@ public:
     uint8_t toolType() const { return _toolType; }
     bool invertAxis(uint8_t axis) const;
     uint8_t wifiMode() const { return _wifiMode; }
+    uint16_t tmcRunCurrent() const { return _tmcRunCurrent; }
+    uint16_t tmcHoldCurrent() const { return _tmcHoldCurrent; }
+    uint16_t tmcMicrosteps() const { return _tmcMicrosteps; }
+    bool tmcStealthChop() const { return _tmcStealthChop; }
 
     // Setters (also persist to storage)
     void setStepsPerMm(uint8_t axis, float value);
@@ -91,6 +99,10 @@ public:
     void setToolType(uint8_t type);
     void setInvertAxis(uint8_t axis, bool invert);
     void setWifiMode(uint8_t mode);
+    void setTmcRunCurrent(uint16_t current);
+    void setTmcHoldCurrent(uint16_t current);
+    void setTmcMicrosteps(uint16_t microsteps);
+    void setTmcStealthChop(bool enable);
 
     /**
      * Set a setting by its $ number (e.g., $100=80.0).
@@ -121,6 +133,10 @@ private:
     uint8_t _toolType;
     bool _invertAxis[4];
     uint8_t _wifiMode;
+    uint16_t _tmcRunCurrent;
+    uint16_t _tmcHoldCurrent;
+    uint16_t _tmcMicrosteps;
+    bool _tmcStealthChop;
 };
 
 #endif // SETTINGS_H

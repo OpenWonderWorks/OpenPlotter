@@ -1,14 +1,35 @@
 {
   "name": "app",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
+  "main": "electron-main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:start": "electron .",
+    "electron:build": "vite build && electron-builder"
   },
   "devDependencies": {
+    "electron": "^30.0.9",
+    "electron-builder": "^24.13.3",
     "vite": "^8.0.12"
+  },
+  "build": {
+    "appId": "org.openplotter.app",
+    "productName": "OpenPlotter",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "win": {
+      "target": "portable",
+      "executableName": "OpenPlotter"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.cjs",
+      "electron-preload.js"
+    ]
   }
 }
