@@ -31,5 +31,8 @@
       "electron-main.cjs",
       "electron-preload.js"
     ]
+  },
+  "dependencies": {
+    "serialport": "^13.0.0"
   }
 }

@@ -25,7 +25,7 @@
 #include "homing.h"
 #include "../utils/logger.h"
 #include "../motion/tmc_driver.h"
-#include "config.h"
+#include "../../config.h"
 #include <string.h>
 
 // ============================================================================

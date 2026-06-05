@@ -1,7 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  flashFirmware: (boardType, hexContent, port) => ipcRenderer.invoke('flash-firmware', { boardType, hexContent, port })
+  flashFirmware: (boardType, hexContent, port) => ipcRenderer.invoke('flash-firmware', { boardType, hexContent, port }),
+  detectBoards: () => ipcRenderer.invoke('detect-boards')
 });
 
 window.addEventListener('DOMContentLoaded', () => {

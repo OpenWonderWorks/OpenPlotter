@@ -162,6 +162,7 @@
           <div class="tab-header active" data-tab="tab-control">Control</div>
           <div class="tab-header" data-tab="tab-console">Console</div>
           <div class="tab-header" data-tab="tab-settings">Settings</div>
+          <div class="tab-header" data-tab="tab-plotter">Plotter Config</div>
           <div class="tab-header" data-tab="tab-firmware">Firmware</div>
         </div>
 
@@ -255,6 +256,63 @@
           </div>
         </div>
 
+        <!-- Tab 3.5: Plotter App Configuration -->
+        <div class="tab-content" id="tab-plotter" style="padding: 16px;">
+          <div class="panel">
+            <h2 class="panel-title">Machine Kinematics</h2>
+            <div class="form-group">
+              <label for="cfg-kinematics">Motion System</label>
+              <select id="cfg-kinematics">
+                <option value="cartesian">Cartesian (Standard XY)</option>
+                <option value="rollers">Rollers / CoreXY (Friction Feed)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="cfg-heads">Number of Tool Heads</label>
+              <select id="cfg-heads">
+                <option value="1">1 Head</option>
+                <option value="2">2 Heads</option>
+              </select>
+            </div>
+            
+            <div id="head2-offsets" style="display: none; border-left: 2px solid var(--accent-cyan); padding-left: 10px; margin-top: 10px;">
+              <label style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; display: block;">Head 2 Offset (relative to Head 1)</label>
+              <div class="input-row">
+                <div class="form-group">
+                  <label for="cfg-head2-x">X Offset (mm)</label>
+                  <input type="number" id="cfg-head2-x" value="20" step="1">
+                </div>
+                <div class="form-group">
+                  <label for="cfg-head2-y">Y Offset (mm)</label>
+                  <input type="number" id="cfg-head2-y" value="0" step="1">
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="panel">
+            <h2 class="panel-title">Tool Configuration</h2>
+            <div class="form-group">
+              <label for="cfg-tool-head1">Head 1 Tool</label>
+              <select id="cfg-tool-head1">
+                <option value="pen">Pen / Marker</option>
+                <option value="dragknife" selected>Drag Knife</option>
+                <option value="cutter">Cutter / Spindle</option>
+                <option value="controllerknife">Controller Knife</option>
+              </select>
+            </div>
+            <div class="form-group" id="group-tool-head2" style="display: none;">
+              <label for="cfg-tool-head2">Head 2 Tool</label>
+              <select id="cfg-tool-head2">
+                <option value="pen" selected>Pen / Marker</option>
+                <option value="dragknife">Drag Knife</option>
+                <option value="cutter">Cutter / Spindle</option>
+                <option value="controllerknife">Controller Knife</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <!-- Tab 4: Firmware Flasher -->
         <div class="tab-content" id="tab-firmware" style="padding: 16px;">
           <div class="panel">
@@ -267,6 +325,16 @@
                 <option value="mega">Arduino Mega 2560 (RAMPS 1.4)</option>
                 <option value="nano">Arduino Nano</option>
               </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="flash-port">Target Port</label>
+              <div style="display: flex; gap: 8px;">
+                <select id="flash-port" style="flex: 1;">
+                  <option value="">Select a COM Port...</option>
+                </select>
+                <button id="btn-detect-ports" class="btn" title="Refresh Ports">↻</button>
+              </div>
             </div>
 
             <div class="form-group">
@@ -330,6 +398,15 @@
                 <option value="115200" selected>115200</option>
                 <option value="250000">250000</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label for="conn-usb-port">Select Port</label>
+              <div style="display: flex; gap: 8px;">
+                <select id="conn-usb-port" style="flex: 1;">
+                  <option value="">(Web Serial overrides this)</option>
+                </select>
+                <button id="btn-conn-detect" class="btn" title="Refresh Ports">↻</button>
+              </div>
             </div>
           </div>
 

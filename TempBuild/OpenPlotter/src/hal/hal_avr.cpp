@@ -12,7 +12,7 @@
 #if defined(BOARD_MEGA) || defined(BOARD_NANO)
 
 #include "hal_avr.h"
-#include "config.h"
+#include "../../config.h"
 #include <avr/wdt.h>
 #include <avr/interrupt.h>
 

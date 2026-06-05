@@ -40,8 +40,8 @@
     #define SERIAL_RX_BUFFER_SIZE 128
 #elif defined(BOARD_ESP32_STANDALONE)
     #define BOARD_ESP32
-    #define HAS_WIFI
-    #define HAS_BLUETOOTH
+    // #define HAS_WIFI
+    // #define HAS_BLUETOOTH
     #define HAS_TMC_UART
     #define PLANNER_BUFFER_SIZE 32
 #elif defined(BOARD_MEGA_ESP32_HYBRID)
@@ -262,4 +262,9 @@
 #endif // OPENPLOTTER_CONFIG_H
 
 #define OPENPLOTTER_VERSION "1.1.0"
+
+
+#ifndef STATUS_LED_PIN
+#define STATUS_LED_PIN 13
+#endif
 

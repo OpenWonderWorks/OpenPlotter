@@ -3,7 +3,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const { exec } = require('child_process');
-
+const { SerialPort } = require('serialport');
 let mainWindow;
 
 function createWindow() {
@@ -56,6 +56,10 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
 
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer] ${message} (${sourceId}:${line})`);
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -100,6 +104,42 @@ ipcMain.handle('flash-firmware', async (event, { boardType, hexContent, port }) 
       reject(e.message);
     }
   });
+});
+
+ipcMain.handle('detect-boards', async () => {
+  try {
+    const ports = await SerialPort.list();
+    // Known Arduino VIDs
+    // Mega 2560 typically: 2341
+    // Nano (CH340) typically: 1A86
+    return ports.map(port => {
+      let isArduino = false;
+      let hint = '';
+      if (port.vendorId) {
+        const vid = port.vendorId.toLowerCase();
+        if (vid.includes('2341') || vid.includes('2a03')) {
+          isArduino = true;
+          hint = 'Arduino Uno/Mega';
+        } else if (vid.includes('1a86')) {
+          isArduino = true;
+          hint = 'Arduino Nano (CH340)';
+        } else if (vid.includes('10c4') && port.productId && port.productId.toLowerCase().includes('ea60')) {
+           isArduino = true;
+           hint = 'ESP32 / CP210x';
+        }
+      }
+      return {
+        path: port.path,
+        vendorId: port.vendorId,
+        productId: port.productId,
+        isArduino,
+        hint
+      };
+    });
+  } catch (error) {
+    console.error("Error listing serial ports:", error);
+    return [];
+  }
 });
 
 app.on('window-all-closed', () => {

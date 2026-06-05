@@ -156,7 +156,7 @@ void WifiComms::init() {
         if (WiFi.status() == WL_CONNECTED) {
             LOG_INFO("WiFi: Connected — IP: %s", WiFi.localIP().toString().c_str());
         } else {
-            LOG_ERROR("WiFi: Connection failed, falling back to AP mode");
+            LOG_ERROR("WiFi: Connection failed, TRIG_FALLING back to AP mode");
             // Fallback to AP mode
             WiFi.softAP(WIFI_AP_SSID_PREFIX, _password);
             _mode = 0;

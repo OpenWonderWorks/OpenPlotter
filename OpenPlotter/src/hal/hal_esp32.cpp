@@ -203,10 +203,10 @@ void HAL_ESP32::attachInterrupt(uint8_t pin, InterruptCallback callback,
                                  InterruptTrigger trigger) {
     int mode;
     switch (trigger) {
-        case InterruptTrigger::RISING:  mode = RISING; break;
-        case InterruptTrigger::FALLING: mode = FALLING; break;
-        case InterruptTrigger::CHANGE:  mode = CHANGE; break;
-        default: mode = CHANGE;
+        case InterruptTrigger::TRIG_RISING:  mode = TRIG_RISING; break;
+        case InterruptTrigger::TRIG_FALLING: mode = TRIG_FALLING; break;
+        case InterruptTrigger::TRIG_CHANGE:  mode = TRIG_CHANGE; break;
+        default: mode = TRIG_CHANGE;
     }
     ::attachInterrupt(digitalPinToInterrupt(pin), callback, mode);
 }

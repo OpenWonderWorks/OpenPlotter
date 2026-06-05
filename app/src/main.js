@@ -5,6 +5,10 @@ import { serial } from './lib/serial.js';
 import { websocket } from './lib/websocket.js';
 
 // Application State
+window.onerror = function(msg, url, line, col, error) {
+  alert("Error: " + msg + "\nLine: " + line + "\nCol: " + col + "\nStack: " + (error && error.stack));
+};
+
 const state = {
   connectionMode: 'usb', // 'usb' or 'wifi'
   connection: null,      // active connection instance (serial or websocket)
@@ -63,6 +67,20 @@ const dom = {
   svgW: document.getElementById('svg-w'),
   svgH: document.getElementById('svg-h'),
   svgPaths: document.getElementById('svg-paths'),
+  
+  // Plotter Config
+  cfgKinematics: document.getElementById('cfg-kinematics'),
+  cfgHeads: document.getElementById('cfg-heads'),
+  head2Offsets: document.getElementById('head2-offsets'),
+  cfgHead2X: document.getElementById('cfg-head2-x'),
+  cfgHead2Y: document.getElementById('cfg-head2-y'),
+  cfgToolHead1: document.getElementById('cfg-tool-head1'),
+  groupToolHead2: document.getElementById('group-tool-head2'),
+  cfgToolHead2: document.getElementById('cfg-tool-head2'),
+  flashPort: document.getElementById('flash-port'),
+  btnDetectPorts: document.getElementById('btn-detect-ports'),
+  connUsbPort: document.getElementById('conn-usb-port'),
+  btnConnDetect: document.getElementById('btn-conn-detect'),
   
   // Configs
   cfgScale: document.getElementById('cfg-scale'),
@@ -169,16 +187,37 @@ function setupConnectionHandlers() {
     radio.addEventListener('change', (e) => {
       state.connectionMode = e.target.value;
       if (state.connectionMode === 'usb') {
-        dom.connParamsUsb.style.display = 'block';
-        dom.connParamsWifi.style.display = 'none';
+        if (dom.connParamsUsb) dom.connParamsUsb.style.display = 'block';
+        if (dom.connParamsWifi) dom.connParamsWifi.style.display = 'none';
         state.connection = serial;
       } else {
-        dom.connParamsUsb.style.display = 'none';
-        dom.connParamsWifi.style.display = 'block';
+        if (dom.connParamsUsb) dom.connParamsUsb.style.display = 'none';
+        if (dom.connParamsWifi) dom.connParamsWifi.style.display = 'block';
         state.connection = websocket;
       }
     });
   });
+
+  // Auto-detect Ports Helper
+  const detectPorts = async () => {
+    if (!window.electronAPI) return;
+    const ports = await window.electronAPI.detectBoards();
+    [dom.flashPort, dom.connUsbPort].forEach(select => {
+      if (!select) return;
+      select.innerHTML = '<option value="">Select a COM Port...</option>';
+      ports.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.path;
+        opt.innerText = `${p.path} ${p.isArduino ? `(${p.hint})` : ''}`;
+        if (p.isArduino) opt.selected = true; // Auto-select the first arduino
+        select.appendChild(opt);
+      });
+    });
+  };
+
+  if (dom.btnDetectPorts) dom.btnDetectPorts.addEventListener('click', detectPorts);
+  if (dom.btnConnDetect) dom.btnConnDetect.addEventListener('click', detectPorts);
+  detectPorts();
   
   // Trigger connection
   dom.btnModalConnect.addEventListener('click', async () => {
@@ -626,6 +665,14 @@ function setupParamHandlers() {
     const passes = parseInt(dom.cfgPasses.value) || 1;
     const delay = parseInt(dom.cfgUpDownDelays.value) || 150;
     
+    // Plotter Configs
+    const kinematics = dom.cfgKinematics ? dom.cfgKinematics.value : 'cartesian';
+    const heads = dom.cfgHeads ? parseInt(dom.cfgHeads.value) : 1;
+    const head2X = dom.cfgHead2X ? parseFloat(dom.cfgHead2X.value) : 0;
+    const head2Y = dom.cfgHead2Y ? parseFloat(dom.cfgHead2Y.value) : 0;
+    const toolHead1 = dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife';
+    const toolHead2 = dom.cfgToolHead2 ? dom.cfgToolHead2.value : 'pen';
+    
     state.gcode = generateGcode(state.svgData.paths, {
       feedRateLinear: speed,
       feedRateRapid: rapidSpeed,
@@ -637,7 +684,12 @@ function setupParamHandlers() {
       offsetX: offX,
       offsetY: offY,
       invertY: true,
-      svgSize: { w: state.svgData.width, h: state.svgData.height }
+      svgSize: { w: state.svgData.width, h: state.svgData.height },
+      kinematics: kinematics,
+      heads: heads,
+      head2Offset: { x: head2X, y: head2Y },
+      toolHead1: toolHead1,
+      toolHead2: toolHead2
     });
     
     logToTerminal(`Generated ${state.gcode.split('\n').length} lines of G-code. Ready to cut.`, 'info');
@@ -974,6 +1026,16 @@ function setupSettingsHandlers() {
   });
 }
 
+function setupPlotterConfigHandlers() {
+  if (dom.cfgHeads) {
+    dom.cfgHeads.addEventListener('change', (e) => {
+      const isDual = e.target.value === '2';
+      dom.head2Offsets.style.display = isDual ? 'block' : 'none';
+      dom.groupToolHead2.style.display = isDual ? 'block' : 'none';
+    });
+  }
+}
+
 // --- App Bootstrap ---
 function init() {
   setupConnectionHandlers();
@@ -985,6 +1047,7 @@ function init() {
   setupTabHandlers();
   setupConsoleHandlers();
   setupSettingsHandlers();
+  setupPlotterConfigHandlers();
   
   // Initial draw of empty bed
   drawCanvas();
@@ -1042,9 +1105,9 @@ document.addEventListener('DOMContentLoaded', () => {
           
           // Actually, let's just use the ipcRenderer.
           // We can prompt the user for the COM port name since WebSerial hides it.
-          const comPortName = prompt("Enter your exact COM port name for avrdude (e.g. COM3 or /dev/ttyUSB0):", "COM3");
+          const comPortName = dom.flashPort ? dom.flashPort.value : prompt("Enter your exact COM port name for avrdude (e.g. COM3 or /dev/ttyUSB0):", "COM3");
           if (!comPortName) {
-             flashStatus.innerText = "Flashing cancelled.";
+             flashStatus.innerText = "Flashing cancelled. No COM port specified.";
              btnFlash.disabled = false;
              return;
           }
