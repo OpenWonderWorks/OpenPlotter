@@ -24,7 +24,7 @@
           <path d="M12 8v4l3 3"></path>
         </svg>
         <h1>OpenPlotter</h1>
-        <span class="brand-badge">v2.1.1</span>
+        <span class="brand-badge">v3.0.0</span>
       </div>
       <div class="connection-bar">
         <div id="status-badge" class="status-indicator status-DISCONNECTED">Disconnected</div>
@@ -303,6 +303,58 @@
                   <label for="cfg-head2-y">Y Offset (mm)</label>
                   <input type="number" id="cfg-head2-y" value="0" step="1">
                 </div>
+              </div>
+            </div>
+            </div>
+          </div>
+          
+          <div class="panel">
+            <h2 class="panel-title">Stepper Drivers & Motors</h2>
+            <div class="form-group">
+              <label for="cfg-driver-type">Driver Type</label>
+              <select id="cfg-driver-type">
+                <option value="a4988">A4988 / DRV8825 (Standalone)</option>
+                <option value="tmc2208">TMC2208 (UART)</option>
+                <option value="tmc2209" selected>TMC2209 (UART)</option>
+              </select>
+            </div>
+            <div class="form-group" id="group-motor-current">
+              <label for="cfg-motor-current">Motor Current (mA) - TMC Only</label>
+              <input type="number" id="cfg-motor-current" value="800" step="50" min="200" max="2000">
+            </div>
+            
+            <div class="input-row">
+              <div class="form-group">
+                <label for="cfg-invert-x">Invert X Axis</label>
+                <input type="checkbox" id="cfg-invert-x" style="width: 16px; height: 16px;">
+              </div>
+              <div class="form-group">
+                <label for="cfg-invert-y">Invert Y Axis</label>
+                <input type="checkbox" id="cfg-invert-y" style="width: 16px; height: 16px;">
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2 class="panel-title">Machine Limits & Steps</h2>
+            <div class="input-row">
+              <div class="form-group">
+                <label for="cfg-steps-x">X Steps/mm</label>
+                <input type="number" id="cfg-steps-x" value="80" step="0.1">
+              </div>
+              <div class="form-group">
+                <label for="cfg-steps-y">Y Steps/mm</label>
+                <input type="number" id="cfg-steps-y" value="80" step="0.1">
+              </div>
+            </div>
+            <div class="input-row">
+              <div class="form-group">
+                <label for="cfg-max-speed">Max Speed (mm/min)</label>
+                <input type="number" id="cfg-max-speed" value="5000" step="100">
+              </div>
+              <div class="form-group">
+                <label for="cfg-max-accel">Acceleration (mm/s²)</label>
+                <input type="number" id="cfg-max-accel" value="500" step="10">
               </div>
             </div>
           </div>

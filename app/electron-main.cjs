@@ -4,7 +4,11 @@ const os = require('os');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { SerialPort } = require('serialport');
+const Store = require('electron-store');
+const store = new Store();
+
 let mainWindow;
+let targetSerialPort = null;
 
 // ── Single Instance Lock ──────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -177,6 +181,17 @@ function createWindow() {
   mainWindow.webContents.session.on('select-serial-port', (event, portList, webContents, callback) => {
     event.preventDefault();
     if (portList && portList.length > 0) {
+      if (targetSerialPort) {
+        // Find the port that matches the target path (e.g. COM4).
+        // portList objects in Electron contain portId, portName, displayName.
+        // On Windows, portName is usually the COM port like "COM4".
+        const matched = portList.find(p => p.portName === targetSerialPort);
+        if (matched) {
+          callback(matched.portId);
+          return;
+        }
+      }
+      // Fallback
       callback(portList[0].portId);
     } else {
       callback('');
@@ -248,6 +263,11 @@ ipcMain.handle('save-file-dialog', async (event, { defaultName, filters, title }
 
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
+});
+
+ipcMain.handle('set-target-serial-port', (event, portName) => {
+  targetSerialPort = portName;
+  return true;
 });
 
 // ── IPC: Firmware Flashing ────────────────────────────────────

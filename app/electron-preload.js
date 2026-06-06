@@ -12,7 +12,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFileDialog: (options) => ipcRenderer.invoke('save-file-dialog', options || {}),
   
   // App info
-  getAppVersion: () => ipcRenderer.invoke('get-app-version')
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  
+  // Connection Configuration
+  setTargetSerialPort: (portName) => ipcRenderer.invoke('set-target-serial-port', portName)
 });
 
 window.addEventListener('DOMContentLoaded', () => {

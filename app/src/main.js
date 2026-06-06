@@ -275,7 +275,8 @@ function setupConnectionHandlers() {
     try {
       if (state.connectionMode === 'usb') {
         const baud = parseInt(dom.connUsbBaud.value);
-        await serial.connect(baud);
+        const portPath = dom.connUsbPort.value;
+        await serial.connect(baud, portPath);
       } else {
         const ip = dom.connWifiIp.value.trim();
         await websocket.connect(ip);
@@ -1383,9 +1384,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const config = {
            kinematics: document.getElementById('cfg-kinematics') ? document.getElementById('cfg-kinematics').value : 'cartesian',
            heads: document.getElementById('cfg-heads') ? document.getElementById('cfg-heads').value : '1',
-           tool1: document.getElementById('cfg-tool1') ? document.getElementById('cfg-tool1').value : 'drag_knife',
-           driverX: document.getElementById('cfg-driver-x') ? document.getElementById('cfg-driver-x').value : 'a4988',
-           sensorless: document.getElementById('cfg-sensorless') ? document.getElementById('cfg-sensorless').checked : false
+           tool1: document.getElementById('cfg-tool-head1') ? document.getElementById('cfg-tool-head1').value : 'drag_knife',
+           driverType: document.getElementById('cfg-driver-type') ? document.getElementById('cfg-driver-type').value : 'tmc2209',
+           motorCurrent: document.getElementById('cfg-motor-current') ? document.getElementById('cfg-motor-current').value : '800',
+           invertX: document.getElementById('cfg-invert-x') ? document.getElementById('cfg-invert-x').checked : false,
+           invertY: document.getElementById('cfg-invert-y') ? document.getElementById('cfg-invert-y').checked : false,
+           stepsX: document.getElementById('cfg-steps-x') ? document.getElementById('cfg-steps-x').value : '80',
+           stepsY: document.getElementById('cfg-steps-y') ? document.getElementById('cfg-steps-y').value : '80',
+           maxSpeed: document.getElementById('cfg-max-speed') ? document.getElementById('cfg-max-speed').value : '5000',
+           maxAccel: document.getElementById('cfg-max-accel') ? document.getElementById('cfg-max-accel').value : '500'
         };
 
         const boardType = boardSelect ? boardSelect.value : 'mega';

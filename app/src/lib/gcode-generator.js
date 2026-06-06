@@ -1,5 +1,5 @@
 /**
- * OpenPlotter G-code Generator v2.1.0
+ * OpenPlotter G-code Generator v3.0.0
  * Converts SVG paths to optimized OpenPlotter G-code.
  */
 

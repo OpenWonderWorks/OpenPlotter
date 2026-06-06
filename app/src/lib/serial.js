@@ -38,7 +38,7 @@ export class SerialManager {
     return 'serial' in navigator;
   }
 
-  async connect(baudRate = 115200) {
+  async connect(baudRate = 115200, portPath = null) {
     if (!this.isSupported()) {
       throw new Error('Web Serial API is not supported in this browser. Use Chrome, Edge, or Opera.');
     }
@@ -51,6 +51,11 @@ export class SerialManager {
     this._connecting = true;
     
     try {
+      // In an Electron context, we can tell the backend which port to pick
+      if (portPath && window.electronAPI && window.electronAPI.setTargetSerialPort) {
+         await window.electronAPI.setTargetSerialPort(portPath);
+      }
+      
       this.port = await navigator.serial.requestPort();
       await this.port.open({ baudRate });
       this.connected = true;
