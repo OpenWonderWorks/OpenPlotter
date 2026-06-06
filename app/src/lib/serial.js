@@ -51,9 +51,9 @@ export class SerialManager {
     this._connecting = true;
     
     try {
-      // In an Electron context, we can tell the backend which port to pick
+      // In an Electron context, we can tell the backend which port to pick (synchronous)
       if (portPath && window.electronAPI && window.electronAPI.setTargetSerialPort) {
-         await window.electronAPI.setTargetSerialPort(portPath);
+         window.electronAPI.setTargetSerialPort(portPath);
       }
       
       this.port = await navigator.serial.requestPort();

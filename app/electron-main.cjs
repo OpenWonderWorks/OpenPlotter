@@ -183,7 +183,10 @@ function createWindow() {
         // Find the port that matches the target path (e.g. COM4).
         // portList objects in Electron contain portId, portName, displayName.
         // On Windows, portName is usually the COM port like "COM4".
-        const matched = portList.find(p => p.portName === targetSerialPort);
+        const matched = portList.find(p => 
+          (p.portName && p.portName.toLowerCase() === targetSerialPort.toLowerCase()) ||
+          (p.displayName && p.displayName.toLowerCase() === targetSerialPort.toLowerCase())
+        );
         if (matched) {
           callback(matched.portId);
           return;
@@ -263,9 +266,9 @@ ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
 
-ipcMain.handle('set-target-serial-port', (event, portName) => {
+ipcMain.on('set-target-serial-port', (event, portName) => {
   targetSerialPort = portName;
-  return true;
+  event.returnValue = true;
 });
 
 // ── IPC: Firmware Flashing ────────────────────────────────────

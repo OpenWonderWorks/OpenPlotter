@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   
   // Connection Configuration
-  setTargetSerialPort: (portName) => ipcRenderer.invoke('set-target-serial-port', portName)
+  setTargetSerialPort: (portName) => ipcRenderer.sendSync('set-target-serial-port', portName)
 });
 
 window.addEventListener('DOMContentLoaded', () => {
