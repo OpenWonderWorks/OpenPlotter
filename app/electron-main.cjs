@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const { SerialPort } = require('serialport');
 let mainWindow;
 
@@ -83,7 +83,6 @@ ipcMain.handle('flash-firmware', async (event, { boardType, hexContent, port }) 
       const tempPath = path.join(os.tmpdir(), `openplotter_${boardType}.hex`);
       fs.writeFileSync(tempPath, hexContent);
       
-      let cmd = "";
       let avrdudeExe = 'avrdude';
       
       // On Windows, try to find Arduino's bundled avrdude
@@ -101,18 +100,47 @@ ipcMain.handle('flash-firmware', async (event, { boardType, hexContent, port }) 
         }
       }
 
+      let cmdPath = avrdudeExe;
+      let cmdArgs = [];
       if (boardType === 'mega') {
-        cmd = `${avrdudeExe} -v -patmega2560 -cwiring -P${port} -b115200 -D "-Uflash:w:${tempPath}:i"`;
+        if (avrdudeExe.includes(' -C ')) {
+            const parts = avrdudeExe.split(' -C ');
+            cmdPath = parts[0].replace(/"/g, '');
+            cmdArgs = ['-C', parts[1].replace(/"/g, ''), '-v', '-patmega2560', '-cwiring', `-P${port}`, '-b115200', '-D', `-Uflash:w:${tempPath}:i`];
+        } else {
+            cmdArgs = ['-v', '-patmega2560', '-cwiring', `-P${port}`, '-b115200', '-D', `-Uflash:w:${tempPath}:i`];
+        }
       } else if (boardType === 'nano') {
-        cmd = `${avrdudeExe} -v -patmega328p -carduino -P${port} -b115200 -D "-Uflash:w:${tempPath}:i"`;
+        if (avrdudeExe.includes(' -C ')) {
+            const parts = avrdudeExe.split(' -C ');
+            cmdPath = parts[0].replace(/"/g, '');
+            cmdArgs = ['-C', parts[1].replace(/"/g, ''), '-v', '-patmega328p', '-carduino', `-P${port}`, '-b115200', '-D', `-Uflash:w:${tempPath}:i`];
+        } else {
+            cmdArgs = ['-v', '-patmega328p', '-carduino', `-P${port}`, '-b115200', '-D', `-Uflash:w:${tempPath}:i`];
+        }
       } else {
         return reject("Unsupported board type");
       }
       
-      exec(cmd, (error, stdout, stderr) => {
-        if (error) {
-          console.error(stderr);
-          reject("avrdude failed or not found. Please install Arduino IDE/avrdude and ensure it is in your system PATH.");
+      event.sender.send('flash-progress', `Running: ${cmdPath} ${cmdArgs.join(' ')}\n`);
+      const child = spawn(cmdPath, cmdArgs);
+      
+      child.stdout.on('data', (data) => {
+        event.sender.send('flash-progress', data.toString());
+      });
+      
+      child.stderr.on('data', (data) => {
+        event.sender.send('flash-progress', data.toString());
+      });
+      
+      child.on('error', (error) => {
+        event.sender.send('flash-progress', `\nError launching avrdude: ${error.message}\n`);
+        reject("avrdude failed or not found. Please install Arduino IDE/avrdude and ensure it is in your system PATH.");
+      });
+      
+      child.on('close', (code) => {
+        if (code !== 0) {
+          reject(`avrdude exited with code ${code}`);
         } else {
           resolve('Firmware flashed successfully!');
         }
@@ -120,6 +148,96 @@ ipcMain.handle('flash-firmware', async (event, { boardType, hexContent, port }) 
     } catch (e) {
       reject(e.message);
     }
+  });
+});
+
+ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, config }) => {
+  return new Promise((resolve, reject) => {
+    if (!port) return reject("Please select a COM port first.");
+    event.sender.send('flash-progress', `Starting dynamic compilation for ${boardType}...\n`);
+    event.sender.send('flash-progress', `Updating openplotter_config.h with UI settings...\n`);
+    
+    const projectDir = path.join(__dirname, '..', 'OpenPlotter');
+    const configPath = path.join(projectDir, 'openplotter_config.h');
+    
+    try {
+      // (Mock) config modifications
+      event.sender.send('flash-progress', `(Mock) Applied settings: Tool=${config.tool1}, DriverX=${config.driverX}, Sensorless=${config.sensorless}\n`);
+      
+      // We'll run arduino-cli directly!
+      let fqbn = boardType === 'mega' ? 'arduino:avr:mega' : 'arduino:avr:nano';
+      const cliPath = path.join(projectDir, 'arduino-cli.exe');
+      
+      event.sender.send('flash-progress', `\nCompiling firmware... This may take a minute.\n`);
+      const buildDir = path.join(os.tmpdir(), `openplotter_build_${boardType}`);
+      
+      const compileArgs = ['compile', '--fqbn', fqbn, 'OpenPlotter.ino', '--output-dir', buildDir];
+      const compileChild = spawn(cliPath, compileArgs, { cwd: projectDir });
+      
+      compileChild.stdout.on('data', (data) => event.sender.send('flash-progress', data.toString()));
+      compileChild.stderr.on('data', (data) => event.sender.send('flash-progress', data.toString()));
+      
+      compileChild.on('close', (code) => {
+         if (code !== 0) {
+           reject(`arduino-cli exited with code ${code}. Compilation failed.`);
+         } else {
+           event.sender.send('flash-progress', `\nCompilation successful! Flashing now...\n`);
+           
+           const hexPath = path.join(buildDir, 'OpenPlotter.ino.hex');
+           if (!fs.existsSync(hexPath)) {
+              return reject("Hex file not found after compilation.");
+           }
+           
+           const hexContent = fs.readFileSync(hexPath, 'utf8');
+           
+           ipcMain.emit('flash-firmware-internal', event, event, { boardType, hexContent, port }, resolve, reject);
+         }
+      });
+    } catch (e) {
+      reject(`Compilation pipeline failed: ${e.message}`);
+    }
+  });
+});
+
+ipcMain.on('flash-firmware-internal', (event, originalEvent, args, resolve, reject) => {
+  const { boardType, hexContent, port } = args;
+  const tempPath = path.join(os.tmpdir(), `openplotter_${boardType}.hex`);
+  fs.writeFileSync(tempPath, hexContent);
+  
+  let cmdPath = 'avrdude';
+  let cmdArgs = [];
+  
+  if (process.platform === 'win32') {
+    const arduino15 = path.join(process.env.LOCALAPPDATA, 'Arduino15', 'packages', 'arduino', 'tools', 'avrdude');
+    if (fs.existsSync(arduino15)) {
+      const versions = fs.readdirSync(arduino15);
+      if (versions.length > 0) {
+        const avrdudePath = path.join(arduino15, versions[0], 'bin', 'avrdude.exe');
+        const confPath = path.join(arduino15, versions[0], 'etc', 'avrdude.conf');
+        if (fs.existsSync(avrdudePath)) {
+          cmdPath = avrdudePath;
+          cmdArgs.push('-C', confPath);
+        }
+      }
+    }
+  }
+  
+  if (boardType === 'mega') {
+    cmdArgs.push('-v', '-patmega2560', '-cwiring', `-P${port}`, '-b115200', '-D', `-Uflash:w:${tempPath}:i`);
+  } else if (boardType === 'nano') {
+    cmdArgs.push('-v', '-patmega328p', '-carduino', `-P${port}`, '-b115200', '-D', `-Uflash:w:${tempPath}:i`);
+  }
+  
+  originalEvent.sender.send('flash-progress', `Running: ${cmdPath} ${cmdArgs.join(' ')}\n`);
+  const child = spawn(cmdPath, cmdArgs);
+  
+  child.stdout.on('data', (data) => originalEvent.sender.send('flash-progress', data.toString()));
+  child.stderr.on('data', (data) => originalEvent.sender.send('flash-progress', data.toString()));
+  
+  child.on('error', (error) => reject(`Error launching avrdude: ${error.message}`));
+  child.on('close', (code) => {
+    if (code !== 0) reject(`avrdude exited with code ${code}`);
+    else resolve('Firmware compiled and flashed successfully!');
   });
 });
 

@@ -1063,6 +1063,76 @@ document.addEventListener('DOMContentLoaded', () => {
   const flashStatus = document.getElementById('flash-status');
   const fileInput = document.getElementById('flash-file');
   const boardSelect = document.getElementById('flash-board-type');
+  const fileSourceSelect = document.getElementById('flash-file-source');
+  const flashTerminal = document.getElementById('flash-terminal');
+  const compileTerminal = document.getElementById('compile-terminal');
+  const btnCompileFlash = document.getElementById('btn-compile-flash');
+  const compileStatus = document.getElementById('compile-status');
+  
+  if (fileSourceSelect && fileInput) {
+    fileSourceSelect.addEventListener('change', (e) => {
+       fileInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+    });
+  }
+
+  // Setup terminal listener
+  if (window.electronAPI && window.electronAPI.onFlashProgress) {
+    window.electronAPI.onFlashProgress((data) => {
+      if (flashTerminal && flashTerminal.style.display === 'block') {
+         flashTerminal.textContent += data;
+         flashTerminal.scrollTop = flashTerminal.scrollHeight;
+      }
+      if (compileTerminal && compileTerminal.style.display === 'block') {
+         compileTerminal.textContent += data;
+         compileTerminal.scrollTop = compileTerminal.scrollHeight;
+      }
+    });
+  }
+
+  if (btnCompileFlash) {
+     btnCompileFlash.addEventListener('click', async () => {
+        if (!window.electronAPI) {
+          compileStatus.innerText = "Error: Not running in Electron desktop app.";
+          return;
+        }
+        
+        const portName = document.getElementById('flash-port') ? document.getElementById('flash-port').value : "";
+        if (!portName) {
+           compileStatus.innerText = "Error: Please select a Target Port in the Firmware tab.";
+           return;
+        }
+
+        compileTerminal.style.display = 'block';
+        compileTerminal.textContent = '';
+        compileStatus.innerText = "Compiling and Flashing... Please wait.";
+        btnCompileFlash.disabled = true;
+
+        if (appState.port && appState.port.close) {
+           await appState.port.close();
+           appState.connected = false;
+           updateConnectionUI();
+        }
+
+        const config = {
+           kinematics: document.getElementById('cfg-kinematics') ? document.getElementById('cfg-kinematics').value : 'cartesian',
+           heads: document.getElementById('cfg-heads') ? document.getElementById('cfg-heads').value : '1',
+           tool1: document.getElementById('cfg-tool1') ? document.getElementById('cfg-tool1').value : 'drag_knife',
+           driverX: document.getElementById('cfg-driver-x') ? document.getElementById('cfg-driver-x').value : 'a4988',
+           sensorless: document.getElementById('cfg-sensorless') ? document.getElementById('cfg-sensorless').checked : false
+        };
+
+        const boardType = boardSelect ? boardSelect.value : 'mega';
+
+        try {
+          const result = await window.electronAPI.compileAndFlash(boardType, portName, config);
+          compileStatus.innerText = result;
+        } catch (error) {
+          compileStatus.innerText = "Error: " + error;
+        } finally {
+          btnCompileFlash.disabled = false;
+        }
+     });
+  }
 
   if (btnFlash) {
     btnFlash.addEventListener('click', async () => {
@@ -1071,57 +1141,54 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       
-      if (!appState.port) {
-        flashStatus.innerText = "Error: Please connect to a COM port first in the top bar.";
-        return;
+      const comPortName = document.getElementById('flash-port') ? document.getElementById('flash-port').value : "";
+      if (!comPortName) {
+         flashStatus.innerText = "Error: Please select a target COM port.";
+         return;
       }
 
-      if (fileInput.files.length === 0) {
-        flashStatus.innerText = "Error: Please select a firmware .hex file first.";
-        return;
-      }
+      const boardType = boardSelect.value;
+      const fileSource = fileSourceSelect.value;
+      let hexContent = "";
 
-      const file = fileInput.files[0];
-      const reader = new FileReader();
-      
-      reader.onload = async (e) => {
-        try {
-          flashStatus.innerText = "Flashing... Do not disconnect the board!";
-          btnFlash.disabled = true;
-          
-          const hexContent = e.target.result;
-          const boardType = boardSelect.value;
-          // Note: we disconnect the current port before flashing so avrdude can use it
-          if (appState.port && appState.port.close) {
-             await appState.port.close();
-             appState.connected = false;
-             updateConnectionUI();
-          }
-          
-          // Electron will look for the COM port name. Wait, WebSerial port objects don't expose COM name easily in Chrome.
-          // But Electron handles this via the IPC. We pass the port name if we know it.
-          // Since we connected via WebSerial, getting the actual COM port name is tricky.
-          // In a real app, the backend would list ports. For this prototype, we'll ask the user.
-          
-          // Actually, let's just use the ipcRenderer.
-          // We can prompt the user for the COM port name since WebSerial hides it.
-          const comPortName = dom.flashPort ? dom.flashPort.value : prompt("Enter your exact COM port name for avrdude (e.g. COM3 or /dev/ttyUSB0):", "COM3");
-          if (!comPortName) {
-             flashStatus.innerText = "Flashing cancelled. No COM port specified.";
-             btnFlash.disabled = false;
-             return;
-          }
-
-          const result = await window.electronAPI.flashFirmware(boardType, hexContent, comPortName);
-          flashStatus.innerText = result;
-        } catch (error) {
-          flashStatus.innerText = "Error: " + error;
-        } finally {
-          btnFlash.disabled = false;
+      if (fileSource === 'custom') {
+        if (fileInput.files.length === 0) {
+          flashStatus.innerText = "Error: Please select a custom .hex file.";
+          return;
         }
-      };
+        const file = fileInput.files[0];
+        hexContent = await file.text();
+      } else {
+        // Fetch bundled hex
+        try {
+           const response = await fetch(`OpenPlotter_Mega2560.hex`);
+           if (!response.ok) throw new Error("Bundled hex not found");
+           hexContent = await response.text();
+        } catch (e) {
+           flashStatus.innerText = "Error loading bundled hex: " + e.message;
+           return;
+        }
+      }
+
+      flashTerminal.style.display = 'block';
+      flashTerminal.textContent = '';
+      flashStatus.innerText = "Flashing... Do not disconnect the board!";
+      btnFlash.disabled = true;
       
-      reader.readAsText(file);
+      if (appState.port && appState.port.close) {
+         await appState.port.close();
+         appState.connected = false;
+         updateConnectionUI();
+      }
+      
+      try {
+        const result = await window.electronAPI.flashFirmware(boardType, hexContent, comPortName);
+        flashStatus.innerText = result;
+      } catch (error) {
+        flashStatus.innerText = "Error: " + error;
+      } finally {
+        btnFlash.disabled = false;
+      }
     });
   }
 });
