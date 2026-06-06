@@ -1,13 +1,20 @@
 {
-  "name": "app",
-  "version": "1.0.0",
+  "name": "openplotter-companion",
+  "version": "2.0.0",
   "private": true,
+  "description": "Open-source cutting plotter companion app — SVG import, G-code generation, and real-time machine control.",
   "main": "electron-main.cjs",
   "type": "module",
+  "homepage": "https://github.com/OpenWonderWorks/OpenPlotter",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenWonderWorks/OpenPlotter.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "electron:dev": "vite build && set NODE_ENV=development&& electron .",
     "electron:start": "electron .",
     "electron:build": "vite build && electron-builder"
   },

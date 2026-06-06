@@ -28,7 +28,7 @@ export function generateGcode(paths, options = {}) {
   const gcode = [];
   
   // Header
-  gcode.push(`; OpenPlotter G-code Generator v1.1.0`);
+  gcode.push(`; OpenPlotter G-code Generator v2.0.0`);
   gcode.push(`; Generated: ${new Date().toISOString()}`);
   gcode.push(`; Kinematics: ${kinematics}`);
   gcode.push(`; Heads: ${heads}`);

@@ -48,6 +48,89 @@ class Matrix {
 }
 
 /**
+ * Converts an SVG arc (endpoint parameterization) to polyline points.
+ * Implements SVG spec F.6: Endpoint to Center Arc Parameterization.
+ */
+function arcToPoints(x1, y1, rxIn, ryIn, xAxisRotDeg, largeArc, sweep, x2, y2, tolerance = 0.15) {
+  // Same point = no arc
+  if (x1 === x2 && y1 === y2) return [];
+  
+  const phi = (xAxisRotDeg * Math.PI) / 180;
+  const cosPhi = Math.cos(phi);
+  const sinPhi = Math.sin(phi);
+  
+  // Step 1: Compute (x1', y1') — SVG spec eq. F.6.5.1
+  const dx2 = (x1 - x2) / 2;
+  const dy2 = (y1 - y2) / 2;
+  const x1p = cosPhi * dx2 + sinPhi * dy2;
+  const y1p = -sinPhi * dx2 + cosPhi * dy2;
+  
+  // Step 2: Correct radii — SVG spec F.6.6
+  let rx = Math.abs(rxIn);
+  let ry = Math.abs(ryIn);
+  const x1pSq = x1p * x1p;
+  const y1pSq = y1p * y1p;
+  let rxSq = rx * rx;
+  let rySq = ry * ry;
+  
+  const lambda = x1pSq / rxSq + y1pSq / rySq;
+  if (lambda > 1) {
+    const sqrtLambda = Math.sqrt(lambda);
+    rx *= sqrtLambda;
+    ry *= sqrtLambda;
+    rxSq = rx * rx;
+    rySq = ry * ry;
+  }
+  
+  // Step 3: Compute center point (cx', cy') — SVG spec eq. F.6.5.2 & F.6.5.3
+  let sq = (rxSq * rySq - rxSq * y1pSq - rySq * x1pSq) / (rxSq * y1pSq + rySq * x1pSq);
+  if (sq < 0) sq = 0;
+  let root = Math.sqrt(sq);
+  if (largeArc === sweep) root = -root;
+  
+  const cxp = root * (rx * y1p) / ry;
+  const cyp = root * -(ry * x1p) / rx;
+  
+  // Step 4: Compute center (cx, cy) from (cx', cy')
+  const cxCenter = cosPhi * cxp - sinPhi * cyp + (x1 + x2) / 2;
+  const cyCenter = sinPhi * cxp + cosPhi * cyp + (y1 + y2) / 2;
+  
+  // Step 5: Compute theta1 and dtheta
+  function angle(ux, uy, vx, vy) {
+    const dot = ux * vx + uy * vy;
+    const len = Math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy));
+    let ang = Math.acos(Math.max(-1, Math.min(1, dot / len)));
+    if (ux * vy - uy * vx < 0) ang = -ang;
+    return ang;
+  }
+  
+  const theta1 = angle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+  let dtheta = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+  
+  // Adjust dtheta for sweep direction
+  if (!sweep && dtheta > 0) dtheta -= 2 * Math.PI;
+  if (sweep && dtheta < 0) dtheta += 2 * Math.PI;
+  
+  // Step 6: Linearize arc
+  const circumference = 2 * Math.PI * Math.max(rx, ry);
+  const arcLen = Math.abs(dtheta / (2 * Math.PI)) * circumference;
+  const numSteps = Math.max(4, Math.ceil(arcLen / tolerance));
+  
+  const points = [];
+  for (let i = 1; i <= numSteps; i++) {
+    const t = theta1 + (i / numSteps) * dtheta;
+    const xp = rx * Math.cos(t);
+    const yp = ry * Math.sin(t);
+    points.push({
+      x: cosPhi * xp - sinPhi * yp + cxCenter,
+      y: sinPhi * xp + cosPhi * yp + cyCenter
+    });
+  }
+  
+  return points;
+}
+
+/**
  * Parses transform attribute string (e.g., "translate(10, 20) scale(2)")
  */
 function parseTransform(transformStr) {
@@ -268,9 +351,37 @@ function pathCommandsToPolylines(commands, tolerance = 0.15) {
         cy = sy;
         break;
         
+      case 'A':
+      case 'a': // Elliptical Arc
+        while (idx < p.length) {
+          const isRel = code === 'a';
+          const rx = Math.abs(p[idx++]);
+          const ry = Math.abs(p[idx++]);
+          const xAxisRotation = p[idx++];
+          const largeArcFlag = p[idx++];
+          const sweepFlag = p[idx++];
+          const ex = p[idx++] + (isRel ? cx : 0);
+          const ey = p[idx++] + (isRel ? cy : 0);
+          
+          // Degenerate case: zero radii = straight line
+          if (rx === 0 || ry === 0) {
+            currentPath.push({ x: ex, y: ey });
+            cx = ex;
+            cy = ey;
+            continue;
+          }
+          
+          // Convert endpoint arc to center parameterization (SVG spec F.6)
+          const arcPts = arcToPoints(cx, cy, rx, ry, xAxisRotation, largeArcFlag, sweepFlag, ex, ey, tolerance);
+          currentPath.push(...arcPts);
+          
+          cx = ex;
+          cy = ey;
+        }
+        break;
+        
       default:
-        // Ignore unsupported commands like arcs (A/a) for simplicity
-        // or approximate them. Usually SVGs can be converted to bezier curves.
+        // Skip unknown commands
         break;
     }
   }

@@ -4,10 +4,58 @@ import { generateGcode } from './lib/gcode-generator.js';
 import { serial } from './lib/serial.js';
 import { websocket } from './lib/websocket.js';
 
-// Application State
+// Global error handler (non-blocking)
 window.onerror = function(msg, url, line, col, error) {
-  alert("Error: " + msg + "\nLine: " + line + "\nCol: " + col + "\nStack: " + (error && error.stack));
+  console.error(`[OpenPlotter Error] ${msg} at ${url}:${line}:${col}`, error);
 };
+
+// ==========================================
+// Toast Notification System
+// ==========================================
+const toastContainer = (() => {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+  return container;
+})();
+
+function showToast(message, type = 'info', durationMs = 4000) {
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  
+  const icons = {
+    info: 'ℹ',
+    success: '✓',
+    warning: '⚠',
+    error: '✕'
+  };
+  
+  toast.innerHTML = `
+    <span class="toast-icon">${icons[type] || icons.info}</span>
+    <span class="toast-message">${message}</span>
+    <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+  `;
+  
+  toastContainer.appendChild(toast);
+  
+  // Trigger entrance animation
+  requestAnimationFrame(() => toast.classList.add('toast-visible'));
+  
+  // Auto-dismiss
+  if (durationMs > 0) {
+    setTimeout(() => {
+      toast.classList.remove('toast-visible');
+      toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+      // Fallback removal if transition doesn't fire
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 400);
+    }, durationMs);
+  }
+  
+  return toast;
+}
 
 const state = {
   connectionMode: 'usb', // 'usb' or 'wifi'
@@ -234,7 +282,7 @@ function setupConnectionHandlers() {
       }
       dom.modalConnect.classList.remove('open');
     } catch (err) {
-      alert(`Connection failed: ${err.message || err}`);
+      showToast(`Connection failed: ${err.message || err}`, 'error', 6000);
     } finally {
       dom.btnModalConnect.disabled = false;
       dom.btnModalConnect.innerText = 'Connect';
@@ -267,6 +315,10 @@ function registerConnectionCallbacks() {
         conn.sendRealtimeCharacter('?');
         conn.sendLine('$$');
       }, 500);
+    };
+
+    conn.onError = (context, err) => {
+      showToast(`${context}: ${err.message || err}`, 'error', 5000);
     };
     
     conn.onDisconnect = () => {
@@ -308,6 +360,7 @@ function registerConnectionCallbacks() {
       
       if (percent === 100) {
         logToTerminal('Cut Completed Successfully!', 'info');
+        showToast('Cut completed successfully!', 'success', 6000);
         resetCutButtons();
       }
     };
@@ -392,7 +445,7 @@ function handleSVGFile(file) {
       dom.btnGenGcode.disabled = false;
       drawCanvas();
     } catch (err) {
-      alert(`Failed to parse SVG: ${err.message}`);
+      showToast(`Failed to parse SVG: ${err.message}`, 'error', 6000);
     }
   };
   reader.readAsText(file);
@@ -537,10 +590,64 @@ function drawCanvas() {
   
   ctx.restore();
   
+  // Draw rulers (outside the pan/zoom transform, in screen space)
+  drawRulers();
+  
   // Draw bed origin label
   ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
   ctx.font = '10px monospace';
   ctx.fillText('Origin (0,0)', 10 + state.panX, -10 + state.panY + state.bedSizeY * state.zoom);
+}
+
+// Ruler tick marks along canvas edges
+function drawRulers() {
+  const z = state.zoom;
+  const px = state.panX;
+  const py = state.panY;
+  
+  ctx.save();
+  ctx.font = '9px monospace';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.lineWidth = 1;
+  
+  // X-axis ruler (top edge)
+  for (let mm = 0; mm <= state.bedSizeX; mm += 10) {
+    const sx = px + mm * z;
+    if (sx < 0 || sx > dom.canvas.width) continue;
+    
+    const isMajor = (mm % 50 === 0);
+    const tickLen = isMajor ? 10 : 5;
+    
+    ctx.beginPath();
+    ctx.moveTo(sx, 0);
+    ctx.lineTo(sx, tickLen);
+    ctx.stroke();
+    
+    if (isMajor) {
+      ctx.fillText(`${mm}`, sx + 2, 18);
+    }
+  }
+  
+  // Y-axis ruler (left edge)
+  for (let mm = 0; mm <= state.bedSizeY; mm += 10) {
+    const sy = py + mm * z;
+    if (sy < 0 || sy > dom.canvas.height) continue;
+    
+    const isMajor = (mm % 50 === 0);
+    const tickLen = isMajor ? 10 : 5;
+    
+    ctx.beginPath();
+    ctx.moveTo(0, sy);
+    ctx.lineTo(tickLen, sy);
+    ctx.stroke();
+    
+    if (isMajor) {
+      ctx.fillText(`${mm}`, 12, sy + 3);
+    }
+  }
+  
+  ctx.restore();
 }
 
 // Interactive zoom & pan handlers on canvas
@@ -694,6 +801,7 @@ function setupParamHandlers() {
     
     logToTerminal(`Generated ${state.gcode.split('\n').length} lines of G-code. Ready to cut.`, 'info');
     updateStartCutStatus();
+    updateGcodePreview();
   });
 }
 
@@ -708,6 +816,9 @@ function setupCutterHandlers() {
   dom.btnStartCut.addEventListener('click', () => {
     if (!state.gcode) return;
     
+    // Confirm before starting cut
+    if (!confirm('Start cutting? Make sure your material is loaded and the tool is ready.')) return;
+    
     const lines = state.gcode.split('\n');
     logToTerminal(`Starting cut queue with ${lines.length} lines...`, 'info');
     
@@ -718,6 +829,9 @@ function setupCutterHandlers() {
     dom.btnPauseCut.style.display = 'inline-flex';
     dom.btnPauseCut.innerText = 'Pause';
     dom.btnStopCut.style.display = 'inline-flex';
+    
+    // Visual feedback: canvas cutting glow
+    dom.canvas.classList.add('cutting-active');
     
     // Disable layout options while running
     setInputsDisabled(true);
@@ -820,6 +934,7 @@ function resetCutButtons() {
   dom.btnStartCut.style.display = 'inline-flex';
   dom.btnPauseCut.style.display = 'none';
   dom.btnStopCut.style.display = 'none';
+  dom.canvas.classList.remove('cutting-active');
   setInputsDisabled(false);
 }
 
@@ -999,7 +1114,7 @@ function setupSettingsHandlers() {
     });
     
     if (commands.length === 0) {
-      alert('No settings were modified.');
+      showToast('No settings were modified.', 'info');
       return;
     }
     
@@ -1010,7 +1125,7 @@ function setupSettingsHandlers() {
     
     // Save to EEPROM
     state.connection.sendLine('M500');
-    alert('Settings updated on machine.');
+    showToast(`Saved ${commands.length} settings to EEPROM.`, 'success');
   });
   
   dom.btnSettingsReset.addEventListener('click', () => {
@@ -1035,6 +1150,125 @@ function setupPlotterConfigHandlers() {
     });
   }
 }
+// --- G-code Preview Panel ---
+function updateGcodePreview() {
+  const panel = document.getElementById('gcode-preview-panel');
+  const content = document.getElementById('gcode-preview-content');
+  const count = document.getElementById('gcode-preview-count');
+  const toggle = document.getElementById('gcode-preview-toggle');
+  
+  if (!panel || !content) return;
+  
+  if (!state.gcode) {
+    panel.style.display = 'none';
+    return;
+  }
+  
+  const lines = state.gcode.split('\n');
+  const totalLines = lines.length;
+  count.innerText = `(${totalLines} lines)`;
+  
+  // Show truncated preview: first 8 lines + ... + last 4 lines
+  let previewText;
+  if (totalLines <= 20) {
+    previewText = state.gcode;
+  } else {
+    const head = lines.slice(0, 8).join('\n');
+    const tail = lines.slice(-4).join('\n');
+    previewText = `${head}\n\n  ... ${totalLines - 12} lines omitted ...\n\n${tail}`;
+  }
+  
+  content.textContent = previewText;
+  panel.style.display = 'block';
+  
+  // Setup toggle if not already bound
+  if (!toggle._bound) {
+    toggle.addEventListener('click', () => {
+      panel.classList.toggle('expanded');
+    });
+    toggle._bound = true;
+  }
+}
+
+// --- G-code Export ---
+function setupGcodeExport() {
+  const btnExport = document.getElementById('btn-export-gcode');
+  if (btnExport) {
+    btnExport.addEventListener('click', () => {
+      if (!state.gcode) {
+        showToast('No G-code generated yet.', 'warning');
+        return;
+      }
+      
+      const blob = new Blob([state.gcode], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `openplotter_${new Date().toISOString().slice(0,10)}.gcode`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('G-code file downloaded.', 'success');
+    });
+  }
+}
+
+// --- Keyboard Shortcuts ---
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Don't trigger shortcuts when typing in input fields
+    const tag = e.target.tagName.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    
+    // Escape = Emergency Stop
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      dom.btnEstop.click();
+      return;
+    }
+    
+    // Space = Pause/Resume cut
+    if (e.key === ' ' && state.sending) {
+      e.preventDefault();
+      dom.btnPauseCut.click();
+      return;
+    }
+    
+    // Arrow keys = Jog
+    if (e.key === 'ArrowUp') { e.preventDefault(); sendJogMove(0, 1); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); sendJogMove(0, -1); return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); sendJogMove(-1, 0); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); sendJogMove(1, 0); return; }
+    
+    // Ctrl+O = Open SVG
+    if (e.ctrlKey && e.key === 'o') {
+      e.preventDefault();
+      dom.fileInput.click();
+      return;
+    }
+    
+    // Ctrl+G = Generate G-code
+    if (e.ctrlKey && e.key === 'g') {
+      e.preventDefault();
+      if (!dom.btnGenGcode.disabled) dom.btnGenGcode.click();
+      return;
+    }
+    
+    // Ctrl+H = Home
+    if (e.ctrlKey && e.key === 'h') {
+      e.preventDefault();
+      dom.btnHome.click();
+      return;
+    }
+  });
+}
+
+// --- Beforeunload Guard ---
+window.addEventListener('beforeunload', (e) => {
+  if (state.connection && state.connection.sending) {
+    e.preventDefault();
+    e.returnValue = 'A cut is in progress. Are you sure you want to leave?';
+  }
+});
 
 // --- App Bootstrap ---
 function init() {
@@ -1048,6 +1282,8 @@ function init() {
   setupConsoleHandlers();
   setupSettingsHandlers();
   setupPlotterConfigHandlers();
+  setupGcodeExport();
+  setupKeyboardShortcuts();
   
   // Initial draw of empty bed
   drawCanvas();
@@ -1061,7 +1297,7 @@ init();
 document.addEventListener('DOMContentLoaded', () => {
   const btnFlash = document.getElementById('btn-flash-firmware');
   const flashStatus = document.getElementById('flash-status');
-  const fileInput = document.getElementById('flash-file');
+  const flashFileInput = document.getElementById('flash-file');
   const boardSelect = document.getElementById('flash-board-type');
   const fileSourceSelect = document.getElementById('flash-file-source');
   const flashTerminal = document.getElementById('flash-terminal');
@@ -1069,9 +1305,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCompileFlash = document.getElementById('btn-compile-flash');
   const compileStatus = document.getElementById('compile-status');
   
-  if (fileSourceSelect && fileInput) {
+  if (fileSourceSelect && flashFileInput) {
     fileSourceSelect.addEventListener('change', (e) => {
-       fileInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+       flashFileInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
     });
   }
 
@@ -1107,10 +1343,9 @@ document.addEventListener('DOMContentLoaded', () => {
         compileStatus.innerText = "Compiling and Flashing... Please wait.";
         btnCompileFlash.disabled = true;
 
-        if (appState.port && appState.port.close) {
-           await appState.port.close();
-           appState.connected = false;
-           updateConnectionUI();
+        // Disconnect active serial/websocket connection before flashing
+        if (state.connected) {
+           await state.connection.disconnect();
         }
 
         const config = {
@@ -1152,22 +1387,12 @@ document.addEventListener('DOMContentLoaded', () => {
       let hexContent = "";
 
       if (fileSource === 'custom') {
-        if (fileInput.files.length === 0) {
+        if (flashFileInput.files.length === 0) {
           flashStatus.innerText = "Error: Please select a custom .hex file.";
           return;
         }
-        const file = fileInput.files[0];
+        const file = flashFileInput.files[0];
         hexContent = await file.text();
-      } else {
-        // Fetch bundled hex
-        try {
-           const response = await fetch(`OpenPlotter_Mega2560.hex`);
-           if (!response.ok) throw new Error("Bundled hex not found");
-           hexContent = await response.text();
-        } catch (e) {
-           flashStatus.innerText = "Error loading bundled hex: " + e.message;
-           return;
-        }
       }
 
       flashTerminal.style.display = 'block';
@@ -1175,14 +1400,13 @@ document.addEventListener('DOMContentLoaded', () => {
       flashStatus.innerText = "Flashing... Do not disconnect the board!";
       btnFlash.disabled = true;
       
-      if (appState.port && appState.port.close) {
-         await appState.port.close();
-         appState.connected = false;
-         updateConnectionUI();
+      // Disconnect active serial/websocket connection before flashing
+      if (state.connected) {
+         await state.connection.disconnect();
       }
       
       try {
-        const result = await window.electronAPI.flashFirmware(boardType, hexContent, comPortName);
+        const result = await window.electronAPI.flashFirmware(boardType, fileSource, hexContent, comPortName);
         flashStatus.innerText = result;
       } catch (error) {
         flashStatus.innerText = "Error: " + error;

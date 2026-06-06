@@ -17,6 +17,7 @@ export class SerialManager {
     this.onDisconnect = () => {};
     this.onLineReceived = () => {};
     this.onProgress = () => {};
+    this.onError = () => {};
     
     // Send Queue
     this.queue = [];
@@ -28,6 +29,9 @@ export class SerialManager {
     // Status Query Timer
     this.statusInterval = null;
     this.rxBuffer = '';
+    
+    // Connection guard
+    this._connecting = false;
   }
 
   isSupported() {
@@ -36,8 +40,15 @@ export class SerialManager {
 
   async connect(baudRate = 115200) {
     if (!this.isSupported()) {
-      throw new Error('Web Serial API is not supported in this browser.');
+      throw new Error('Web Serial API is not supported in this browser. Use Chrome, Edge, or Opera.');
     }
+    
+    // Prevent double-connect
+    if (this.connected || this._connecting) {
+      throw new Error('Already connected or connection in progress.');
+    }
+    
+    this._connecting = true;
     
     try {
       this.port = await navigator.serial.requestPort();
@@ -53,8 +64,11 @@ export class SerialManager {
       return true;
     } catch (err) {
       console.error('Failed to connect:', err);
+      this._surfaceError('Connection failed', err);
       this.disconnect();
       throw err;
+    } finally {
+      this._connecting = false;
     }
   }
 
@@ -83,8 +97,12 @@ export class SerialManager {
       this.port = null;
     }
     
+    const wasConnected = this.connected;
     this.connected = false;
-    this.onDisconnect();
+    this._connecting = false;
+    if (wasConnected) {
+      this.onDisconnect();
+    }
   }
 
   async startReading() {
@@ -105,6 +123,7 @@ export class SerialManager {
         }
       } catch (err) {
         console.error('Serial read error:', err);
+        this._surfaceError('Serial read error', err);
         break;
       } finally {
         if (this.reader) {
@@ -139,8 +158,8 @@ export class SerialManager {
       this.sendNext();
     } else if (line.startsWith('error:')) {
       console.warn('Machine reported error:', line);
+      this._surfaceError('Machine error', new Error(line));
       this.waitingForOk = false;
-      // You can choose to halt or continue. Let's send next but flag error.
       this.sendNext();
     } else if (line.startsWith('<') && line.endsWith('>')) {
       this.parseStatusReport(line);
@@ -192,6 +211,7 @@ export class SerialManager {
       await this.writer.write(data);
     } catch (err) {
       console.error('Failed to send realtime character:', err);
+      this._surfaceError('Send failed', err);
     }
   }
 
@@ -203,6 +223,7 @@ export class SerialManager {
       await this.writer.write(data);
     } catch (err) {
       console.error('Failed to send line:', err);
+      this._surfaceError('Send failed — disconnecting', err);
       this.disconnect();
     }
   }
@@ -253,6 +274,18 @@ export class SerialManager {
     this.onProgress(progressPercent, this.queueIndex, this.queue.length);
     
     this.sendLine(line);
+  }
+
+  /**
+   * Internal helper — surfaces errors to the UI via the onError callback
+   */
+  _surfaceError(context, err) {
+    try {
+      this.onError(context, err);
+    } catch (e) {
+      // Prevent onError handler from crashing the serial manager
+      console.error('Error in onError callback:', e);
+    }
   }
 }
 export const serial = new SerialManager();

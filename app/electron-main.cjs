@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -6,12 +6,140 @@ const { spawn } = require('child_process');
 const { SerialPort } = require('serialport');
 let mainWindow;
 
+// ── Single Instance Lock ──────────────────────────────────────
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+// ── Window State Persistence ──────────────────────────────────
+const stateFile = path.join(app.getPath('userData'), 'window-state.json');
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(stateFile)) {
+      return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    }
+  } catch (e) {
+    console.warn('Failed to load window state:', e.message);
+  }
+  return { width: 1280, height: 800 };
+}
+
+function saveWindowState() {
+  if (!mainWindow) return;
+  try {
+    const bounds = mainWindow.getBounds();
+    const isMaximized = mainWindow.isMaximized();
+    fs.writeFileSync(stateFile, JSON.stringify({ ...bounds, isMaximized }));
+  } catch (e) {
+    console.warn('Failed to save window state:', e.message);
+  }
+}
+
+// ── Crash Reporting ───────────────────────────────────────────
+const crashLogFile = path.join(app.getPath('userData'), 'crash.log');
+
+function logCrash(type, error) {
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] ${type}: ${error.stack || error.message || error}\n`;
+  try {
+    fs.appendFileSync(crashLogFile, entry);
+  } catch (e) {}
+  console.error(`[${type}]`, error);
+}
+
+process.on('uncaughtException', (err) => logCrash('UncaughtException', err));
+process.on('unhandledRejection', (err) => logCrash('UnhandledRejection', err));
+
+// ── Application Menu ──────────────────────────────────────────
+function buildAppMenu() {
+  const isMac = process.platform === 'darwin';
+  
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open SVG...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            mainWindow.webContents.executeJavaScript('document.getElementById("file-input").click()');
+          }
+        },
+        {
+          label: 'Export G-code...',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: async () => {
+            mainWindow.webContents.executeJavaScript(`
+              document.getElementById("btn-export-gcode") && document.getElementById("btn-export-gcode").click()
+            `);
+          }
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About OpenPlotter',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'About OpenPlotter',
+              message: `OpenPlotter v${app.getVersion()}`,
+              detail: 'Open-source cutting plotter companion app.\nhttps://github.com/OpenWonderWorks/OpenPlotter'
+            });
+          }
+        },
+        {
+          label: 'Documentation',
+          click: () => {
+            require('electron').shell.openExternal('https://github.com/OpenWonderWorks/OpenPlotter');
+          }
+        }
+      ]
+    }
+  ];
+  
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ── Create Window ─────────────────────────────────────────────
 function createWindow() {
+  const windowState = loadWindowState();
+  
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: windowState.width,
+    height: windowState.height,
+    x: windowState.x,
+    y: windowState.y,
     title: "OpenPlotter",
-    backgroundColor: '#0a0d16',
+    backgroundColor: '#05050a',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -19,17 +147,39 @@ function createWindow() {
     }
   });
 
+  if (windowState.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  // Save window state on resize/move
+  mainWindow.on('resize', saveWindowState);
+  mainWindow.on('move', saveWindowState);
+  mainWindow.on('close', saveWindowState);
+
+  // CSP Headers
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline'; " +
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+          "font-src 'self' https://fonts.gstatic.com; " +
+          "connect-src 'self' ws: wss: http: https:; " +
+          "img-src 'self' data: blob:;"
+        ]
+      }
+    });
+  });
+
   // Enable Web Serial API permissions and port selection
   mainWindow.webContents.session.on('select-serial-port', (event, portList, webContents, callback) => {
     event.preventDefault();
     if (portList && portList.length > 0) {
-      // Automatically select the first port, or we can send it to the UI to select.
-      // For a native feel, we select the first one, or let the user choose.
-      // In electron, if we don't preventDefault, it will wait.
-      // Let's select the first port for simplicity, or implement a simple choice.
       callback(portList[0].portId);
     } else {
-      callback(''); // No ports available
+      callback('');
     }
   });
 
@@ -63,6 +213,8 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+  
+  buildAppMenu();
 }
 
 app.whenReady().then(() => {
@@ -75,13 +227,50 @@ app.whenReady().then(() => {
   });
 });
 
-ipcMain.handle('flash-firmware', async (event, { boardType, hexContent, port }) => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (!port) return reject("Please select a COM port first.");
-      
-      const tempPath = path.join(os.tmpdir(), `openplotter_${boardType}.hex`);
-      fs.writeFileSync(tempPath, hexContent);
+// ── IPC: File Dialogs ─────────────────────────────────────────
+ipcMain.handle('open-file-dialog', async (event, { filters, title }) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: title || 'Open File',
+    filters: filters || [{ name: 'SVG Files', extensions: ['svg'] }],
+    properties: ['openFile']
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('save-file-dialog', async (event, { defaultName, filters, title }) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: title || 'Save File',
+    defaultPath: defaultName || 'output.gcode',
+    filters: filters || [{ name: 'G-code Files', extensions: ['gcode', 'nc', 'ngc'] }]
+  });
+  return result.canceled ? null : result.filePath;
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
+// ── IPC: Firmware Flashing ────────────────────────────────────
+ipcMain.handle('flash-firmware', async (event, { boardType, fileSource, hexContent, port }) => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!port) return reject("Please select a COM port first.");
+        
+        let actualHexContent = hexContent;
+        if (fileSource === 'bundled') {
+           const devPath = path.join(__dirname, 'public', 'OpenPlotter_Mega2560.hex');
+           const prodPath = path.join(__dirname, 'dist', 'OpenPlotter_Mega2560.hex');
+           if (fs.existsSync(devPath)) {
+               actualHexContent = fs.readFileSync(devPath, 'utf8');
+           } else if (fs.existsSync(prodPath)) {
+               actualHexContent = fs.readFileSync(prodPath, 'utf8');
+           } else {
+               return reject("Bundled firmware not found. " + devPath + " " + prodPath);
+           }
+        }
+
+        const tempPath = path.join(os.tmpdir(), `openplotter_${boardType}.hex`);
+        fs.writeFileSync(tempPath, actualHexContent);
       
       let avrdudeExe = 'avrdude';
       
@@ -244,9 +433,6 @@ ipcMain.on('flash-firmware-internal', (event, originalEvent, args, resolve, reje
 ipcMain.handle('detect-boards', async () => {
   try {
     const ports = await SerialPort.list();
-    // Known Arduino VIDs
-    // Mega 2560 typically: 2341
-    // Nano (CH340) typically: 1A86
     return ports.map(port => {
       let isArduino = false;
       let hint = '';
