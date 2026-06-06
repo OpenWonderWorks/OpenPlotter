@@ -57,7 +57,7 @@ export class SerialManager {
       this.baudRate = baudRate;
       
       this.writer = this.port.writable.getWriter();
-      this.startReading();
+      this.readPromise = this.startReading();
       this.startStatusPolling();
       
       this.onConnect();
@@ -73,6 +73,9 @@ export class SerialManager {
   }
 
   async disconnect() {
+    if (this._disconnecting) return;
+    this._disconnecting = true;
+
     this.stopStatusPolling();
     this.stopSending();
     
@@ -80,7 +83,13 @@ export class SerialManager {
       try {
         await this.reader.cancel();
       } catch (e) {}
-      this.reader = null;
+      // Do not nullify this.reader here; let finally block release the lock
+    }
+    
+    if (this.readPromise) {
+      const p = this.readPromise;
+      this.readPromise = null;
+      try { await p; } catch(e) {}
     }
     
     if (this.writer) {
@@ -100,6 +109,7 @@ export class SerialManager {
     const wasConnected = this.connected;
     this.connected = false;
     this._connecting = false;
+    this._disconnecting = false;
     if (wasConnected) {
       this.onDisconnect();
     }
@@ -127,11 +137,12 @@ export class SerialManager {
         break;
       } finally {
         if (this.reader) {
-          this.reader.releaseLock();
+          try { this.reader.releaseLock(); } catch(e) {}
           this.reader = null;
         }
       }
     }
+    this.readPromise = null;
     this.disconnect();
   }
 

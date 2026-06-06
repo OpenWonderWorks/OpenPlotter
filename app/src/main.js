@@ -1311,6 +1311,36 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const btnDetectPorts = document.getElementById('btn-detect-ports');
+  const flashPortSelect = document.getElementById('flash-port');
+
+  if (btnDetectPorts && flashPortSelect && window.electronAPI) {
+    btnDetectPorts.addEventListener('click', async () => {
+      btnDetectPorts.disabled = true;
+      flashPortSelect.innerHTML = '<option value="">Detecting...</option>';
+      try {
+        const ports = await window.electronAPI.detectBoards();
+        flashPortSelect.innerHTML = '<option value="">Select a COM Port...</option>';
+        if (ports && ports.length > 0) {
+          ports.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.path;
+            opt.textContent = `${p.path} - ${p.friendlyName || 'Unknown Device'}`;
+            flashPortSelect.appendChild(opt);
+          });
+        } else {
+          flashPortSelect.innerHTML = '<option value="">No ports found.</option>';
+        }
+      } catch (err) {
+        flashPortSelect.innerHTML = '<option value="">Error detecting ports</option>';
+      } finally {
+        btnDetectPorts.disabled = false;
+      }
+    });
+    // Auto-detect on load
+    btnDetectPorts.click();
+  }
+
   // Setup terminal listener
   if (window.electronAPI && window.electronAPI.onFlashProgress) {
     window.electronAPI.onFlashProgress((data) => {
@@ -1344,8 +1374,10 @@ document.addEventListener('DOMContentLoaded', () => {
         btnCompileFlash.disabled = true;
 
         // Disconnect active serial/websocket connection before flashing
-        if (state.connected) {
+        if (state.connected && state.connection) {
            await state.connection.disconnect();
+           // Wait a tiny bit for locks to clear
+           await new Promise(r => setTimeout(r, 500));
         }
 
         const config = {
@@ -1401,8 +1433,10 @@ document.addEventListener('DOMContentLoaded', () => {
       btnFlash.disabled = true;
       
       // Disconnect active serial/websocket connection before flashing
-      if (state.connected) {
+      if (state.connected && state.connection) {
          await state.connection.disconnect();
+         // Wait a tiny bit for locks to clear
+         await new Promise(r => setTimeout(r, 500));
       }
       
       try {

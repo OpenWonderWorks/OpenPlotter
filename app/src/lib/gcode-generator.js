@@ -1,6 +1,6 @@
 /**
- * OpenPlotter — G-code Generator
- * Converts parsed polyline paths into cutter-optimized G-code commands.
+ * OpenPlotter G-code Generator v2.1.0
+ * Converts SVG paths to optimized OpenPlotter G-code.
  */
 
 export function generateGcode(paths, options = {}) {

@@ -9,15 +9,22 @@
     <title>OpenPlotter — Cutting Plotter Companion</title>
   </head>
   <body>
-    <!-- App Header -->
-    <header class="app-header">
+  <div class="bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header glass-panel">
       <div class="brand">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-cyan);">
           <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path>
-          <path d="M12 6v6l4 2"></path>
+          <path d="M12 8v4l3 3"></path>
         </svg>
         <h1>OpenPlotter</h1>
-        <span class="brand-badge">Companion v2.0.0</span>
+        <span class="brand-badge">v2.1.0</span>
       </div>
       <div class="connection-bar">
         <div id="status-badge" class="status-indicator status-DISCONNECTED">Disconnected</div>
@@ -29,11 +36,9 @@
       </div>
     </header>
 
-    <!-- App Layout -->
-    <div class="app-layout">
       
       <!-- Left Sidebar: SVG & Parameters -->
-      <aside class="sidebar">
+      <aside class="sidebar glass-panel">
         <!-- SVG Import -->
         <section class="panel">
           <h2 class="panel-title">Design Import</h2>
@@ -152,8 +157,8 @@
           </div>
         </div>
         
-        <!-- Canvas itself -->
-        <div class="canvas-container" id="canvas-container">
+        <!-- Main Canvas Container -->
+      <main class="canvas-container glass-panel" id="canvas-wrapper">
           <canvas id="plotter-canvas" width="600" height="600"></canvas>
         </div>
 
@@ -372,7 +377,7 @@
     </div>
 
     <!-- Bottom Bar: Stats and Active Progress -->
-    <footer class="bottom-bar">
+    <footer class="bottom-bar glass-panel">
       <div class="progress-container">
         <span id="progress-text">Progress: 0%</span>
         <div class="progress-track">
