@@ -134,8 +134,7 @@ aside.sidebar:last-of-type {
   grid-area: canvas;
   position: relative;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.2);
 }

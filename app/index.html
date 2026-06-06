@@ -24,7 +24,7 @@
           <path d="M12 8v4l3 3"></path>
         </svg>
         <h1>OpenPlotter</h1>
-        <span class="brand-badge">v2.1.0</span>
+        <span class="brand-badge">v2.1.1</span>
       </div>
       <div class="connection-bar">
         <div id="status-badge" class="status-indicator status-DISCONNECTED">Disconnected</div>
@@ -138,7 +138,7 @@
       </aside>
 
       <!-- Center: Interactive Canvas -->
-      <main class="main-content">
+      <main class="canvas-container glass-panel" style="flex-direction: column;">
         <!-- Canvas Control Toolbar -->
         <div style="padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
           <div style="display: flex; gap: 8px;">
@@ -158,7 +158,7 @@
         </div>
         
         <!-- Main Canvas Container -->
-      <main class="canvas-container glass-panel" id="canvas-wrapper">
+        <div id="canvas-wrapper" style="flex: 1; position: relative; width: 100%; display: flex; align-items: center; justify-content: center;">
           <canvas id="plotter-canvas" width="600" height="600"></canvas>
         </div>
 
@@ -173,7 +173,7 @@
       </main>
 
       <!-- Right Sidebar: Jog, Console, Settings Tabs -->
-      <aside class="sidebar right">
+      <aside class="sidebar glass-panel" style="grid-area: sidebar-right;">
         <!-- Tabs headers -->
         <div class="tab-headers">
           <div class="tab-header active" data-tab="tab-control">Control</div>
@@ -373,8 +373,8 @@
             <pre id="flash-terminal" style="display: none; background: #000; color: #0f0; padding: 8px; font-size: 0.75rem; height: 150px; overflow-y: auto; margin-top: 12px; white-space: pre-wrap; word-wrap: break-word;"></pre>
           </div>
         </div>
+        </div>
       </aside>
-    </div>
 
     <!-- Bottom Bar: Stats and Active Progress -->
     <footer class="bottom-bar glass-panel">
@@ -391,6 +391,7 @@
         <div>Z: <span id="coord-z" class="coord-val">0.00</span> mm</div>
       </div>
     </footer>
+  </div>
 
     <!-- Connection Dialog Modal -->
     <div id="modal-connect" class="modal-overlay">
