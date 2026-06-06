@@ -4,8 +4,6 @@ const os = require('os');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { SerialPort } = require('serialport');
-const Store = require('electron-store');
-const store = new Store();
 
 let mainWindow;
 let targetSerialPort = null;
