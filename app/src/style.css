@@ -87,7 +87,7 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
 
 /* ═══════════════════════════════════════════════════════════
-   Background Ambiance
+   Background Ambiance (Premium Animated Mesh Gradient)
    ═══════════════════════════════════════════════════════════ */
 .bg-orbs {
   position: absolute;
@@ -95,37 +95,58 @@ body {
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
+  background: 
+    radial-gradient(circle at 15% 50%, rgba(108, 140, 255, 0.15), transparent 40%),
+    radial-gradient(circle at 85% 30%, rgba(245, 158, 66, 0.12), transparent 40%),
+    radial-gradient(circle at 50% 80%, rgba(34, 211, 238, 0.15), transparent 50%);
+  animation: bg-mesh 20s infinite alternate linear;
 }
+
+@keyframes bg-mesh {
+  0% {
+    background-position: 0% 0%, 0% 0%, 0% 0%;
+    transform: scale(1);
+  }
+  50% {
+    background-position: 10% 10%, -10% 5%, 5% -10%;
+    transform: scale(1.05);
+  }
+  100% {
+    background-position: -5% 15%, 15% -10%, -10% 5%;
+    transform: scale(1);
+  }
+}
+
 .orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(120px);
-  opacity: 0.25;
-  animation: orb-drift 25s infinite alternate ease-in-out;
+  filter: blur(140px);
+  opacity: 0.4;
+  animation: orb-drift 30s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
 }
 .orb-1 {
-  width: 500px; height: 500px;
-  background: var(--accent-primary);
-  top: -150px; left: -100px;
+  width: 60vw; height: 60vh;
+  background: linear-gradient(135deg, var(--accent-primary), rgba(108, 140, 255, 0.2));
+  top: -20vh; left: -10vw;
 }
 .orb-2 {
-  width: 400px; height: 400px;
-  background: var(--accent-cyan);
-  bottom: -80px; right: 5%;
-  animation-delay: -8s;
+  width: 50vw; height: 50vh;
+  background: linear-gradient(135deg, var(--accent-cyan), rgba(34, 211, 238, 0.1));
+  bottom: -15vh; right: -5vw;
+  animation-delay: -10s;
 }
 .orb-3 {
-  width: 350px; height: 350px;
-  background: var(--accent-warm);
-  top: 35%; left: 45%;
-  opacity: 0.12;
-  animation-delay: -14s;
+  width: 45vw; height: 45vh;
+  background: linear-gradient(135deg, var(--accent-warm), rgba(245, 158, 66, 0.1));
+  top: 40%; left: 30%;
+  opacity: 0.25;
+  animation-delay: -20s;
 }
 @keyframes orb-drift {
-  0% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(40px, 25px) scale(1.05); }
-  66% { transform: translate(-25px, 50px) scale(0.95); }
-  100% { transform: translate(15px, -30px) scale(1.02); }
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+  33% { transform: translate(8vw, 6vh) scale(1.1) rotate(10deg); }
+  66% { transform: translate(-6vw, 10vh) scale(0.9) rotate(-10deg); }
+  100% { transform: translate(4vw, -8vh) scale(1.05) rotate(5deg); }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -154,7 +175,11 @@ body {
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: 
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -361,12 +386,14 @@ input[type="checkbox"]:checked::after {
   user-select: none;
 }
 .btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 .btn:active:not(:disabled) {
-  transform: translateY(0px);
+  transform: translateY(0px) scale(0.98);
+  box-shadow: none;
 }
 .btn:disabled {
   opacity: 0.35;
@@ -384,8 +411,9 @@ input[type="checkbox"]:checked::after {
   box-shadow: 0 2px 12px var(--accent-primary-glow);
 }
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 4px 20px var(--accent-primary-glow);
-  filter: brightness(1.1);
+  box-shadow: 0 6px 24px var(--accent-primary-glow);
+  filter: brightness(1.15);
+  transform: translateY(-2px);
 }
 
 /* Accent / Action */

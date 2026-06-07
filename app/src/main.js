@@ -103,8 +103,8 @@ const dom = {
   btnModalCancel: document.getElementById('btn-modal-cancel'),
   btnModalConnect: document.getElementById('btn-modal-connect'),
   connModeRadio: document.getElementsByName('conn-mode'),
-  connParamsUsb: document.getElementById('conn-params-usb'),
-  connParamsWifi: document.getElementById('conn-params-wifi'),
+  connParamsUsb: document.getElementById('conn-usb-params'),
+  connParamsWifi: document.getElementById('conn-wifi-params'),
   connUsbBaud: document.getElementById('conn-usb-baud'),
   connWifiIp: document.getElementById('conn-wifi-ip'),
   
@@ -123,7 +123,10 @@ const dom = {
   traceSimplify: document.getElementById('trace-simplify'),
   traceMinLength: document.getElementById('trace-min-length'),
   traceInvert: document.getElementById('trace-invert'),
-  btnRetrace: document.getElementById('btn-retrace'),
+  valTraceThreshold: document.getElementById('val-trace-threshold'),
+  valTraceSmoothing: document.getElementById('val-trace-smoothing'),
+  valTraceSimplify: document.getElementById('val-trace-simplify'),
+  valTraceMinLength: document.getElementById('val-trace-min-length'),
   tracePreview: document.getElementById('trace-preview'),
   
   // Plotter Config
@@ -562,11 +565,42 @@ function setupFileImporter() {
     if (file) handleFileImport(file);
   });
   
-  // Re-trace button
-  if (dom.btnRetrace) {
-    dom.btnRetrace.addEventListener('click', () => {
-      if (state.traceFile) handleRasterFile(state.traceFile);
+  
+  // Interactive Trace Settings
+  let traceDebounceTimer;
+  const triggerRetrace = () => {
+    if (state.traceFile) {
+      clearTimeout(traceDebounceTimer);
+      traceDebounceTimer = setTimeout(() => handleRasterFile(state.traceFile), 300);
+    }
+  };
+
+  if (dom.traceThreshold) {
+    dom.traceThreshold.addEventListener('input', (e) => {
+      if (dom.valTraceThreshold) dom.valTraceThreshold.innerText = e.target.value;
+      triggerRetrace();
     });
+  }
+  if (dom.traceSmoothing) {
+    dom.traceSmoothing.addEventListener('input', (e) => {
+      if (dom.valTraceSmoothing) dom.valTraceSmoothing.innerText = e.target.value;
+      triggerRetrace();
+    });
+  }
+  if (dom.traceSimplify) {
+    dom.traceSimplify.addEventListener('input', (e) => {
+      if (dom.valTraceSimplify) dom.valTraceSimplify.innerText = parseFloat(e.target.value).toFixed(1);
+      triggerRetrace();
+    });
+  }
+  if (dom.traceMinLength) {
+    dom.traceMinLength.addEventListener('input', (e) => {
+      if (dom.valTraceMinLength) dom.valTraceMinLength.innerText = e.target.value;
+      triggerRetrace();
+    });
+  }
+  if (dom.traceInvert) {
+    dom.traceInvert.addEventListener('change', triggerRetrace);
   }
 }
 
@@ -1417,13 +1451,10 @@ function setupFirmwareFlasher() {
   if (window.electronAPI?.onFlashProgress) {
     window.electronAPI.onFlashProgress((data) => {
       logManager.cmd(data.trim());
-      if (flashTerminal?.style.display === 'block') {
-        flashTerminal.textContent += data;
-        flashTerminal.scrollTop = flashTerminal.scrollHeight;
-      }
-      if (compileTerminal?.style.display === 'block') {
-        compileTerminal.textContent += data;
-        compileTerminal.scrollTop = compileTerminal.scrollHeight;
+      // Auto-open log panel if collapsed so user can see it
+      const logPanel = document.getElementById('log-panel');
+      if (logPanel && logPanel.classList.contains('collapsed')) {
+        logPanel.classList.remove('collapsed');
       }
     });
   }
@@ -1441,8 +1472,7 @@ function setupFirmwareFlasher() {
         return;
       }
 
-      if (compileTerminal) { compileTerminal.style.display = 'block'; compileTerminal.textContent = ''; }
-      if (compileStatus) compileStatus.innerText = 'Compiling & flashing...';
+      if (compileStatus) compileStatus.innerText = 'Compiling & flashing... Check Activity Log.';
       btnCompileFlash.disabled = true;
       logManager.flash('Starting compile & flash...');
 

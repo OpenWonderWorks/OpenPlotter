@@ -59,34 +59,49 @@
           <div>Paths: <strong id="svg-paths">-</strong></div>
         </div>
 
-        <!-- Raster Trace Settings (shown for PNG/JPG) -->
-        <div id="trace-settings" class="trace-settings" style="display: none;">
-          <h3 style="font-size: 0.75rem; margin: 0 0 8px 0; color: var(--text-secondary); font-weight: 600;">Trace Settings</h3>
-          <div class="input-row">
-            <div class="form-group">
+      <!-- Image Trace Settings -->
+      <section class="panel" id="trace-settings" style="display: none;">
+        <h2 class="panel-title">🖼️ Trace Settings</h2>
+        <div style="background: var(--bg-inset); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-default);">
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between;">
               <label for="trace-threshold">Threshold</label>
-              <input type="number" id="trace-threshold" value="128" min="0" max="255" step="1">
+              <span id="val-trace-threshold" style="font-size: 0.72rem; color: var(--text-primary);">128</span>
             </div>
-            <div class="form-group">
+            <input type="range" id="trace-threshold" value="128" min="0" max="255" step="1" style="width: 100%;">
+          </div>
+          
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between;">
               <label for="trace-smoothing">Smoothing</label>
-              <input type="number" id="trace-smoothing" value="1" min="0" max="5" step="1">
+              <span id="val-trace-smoothing" style="font-size: 0.72rem; color: var(--text-primary);">1</span>
             </div>
+            <input type="range" id="trace-smoothing" value="1" min="0" max="5" step="1" style="width: 100%;">
           </div>
-          <div class="input-row">
-            <div class="form-group">
+          
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between;">
               <label for="trace-simplify">Simplify</label>
-              <input type="number" id="trace-simplify" value="1.5" min="0.1" max="10" step="0.1">
+              <span id="val-trace-simplify" style="font-size: 0.72rem; color: var(--text-primary);">1.5</span>
             </div>
-            <div class="form-group">
-              <label for="trace-min-length">Min Path</label>
-              <input type="number" id="trace-min-length" value="5" min="2" max="50" step="1">
-            </div>
+            <input type="range" id="trace-simplify" value="1.5" min="0.1" max="10" step="0.1" style="width: 100%;">
           </div>
+          
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between;">
+              <label for="trace-min-length">Min Path Length</label>
+              <span id="val-trace-min-length" style="font-size: 0.72rem; color: var(--text-primary);">5</span>
+            </div>
+            <input type="range" id="trace-min-length" value="5" min="2" max="50" step="1" style="width: 100%;">
+          </div>
+          
           <div class="form-group" style="margin-bottom: 4px;">
-            <label><input type="checkbox" id="trace-invert" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle;"> Invert (trace white on dark)</label>
+            <label style="cursor: pointer; display: flex; align-items: center;">
+              <input type="checkbox" id="trace-invert" style="width: 14px; height: 14px; margin-right: 6px;"> 
+              Invert (trace white on dark)
+            </label>
           </div>
-          <button id="btn-retrace" class="btn btn-full" style="margin-top: 6px;">Re-trace Image</button>
-          <canvas id="trace-preview" class="trace-preview-canvas" style="display: none;"></canvas>
+          <canvas id="trace-preview" class="trace-preview-canvas" style="display: none; width: 100%; border-radius: var(--radius-sm); margin-top: 8px; border: 1px solid var(--border-subtle);"></canvas>
         </div>
       </section>
 
@@ -212,8 +227,7 @@
         <div class="tab-header active" data-tab="tab-control">Control</div>
         <div class="tab-header" data-tab="tab-console">Console</div>
         <div class="tab-header" data-tab="tab-settings">Settings</div>
-        <div class="tab-header" data-tab="tab-plotter">Config</div>
-        <div class="tab-header" data-tab="tab-firmware">Flash</div>
+        <div class="tab-header" data-tab="tab-plotter">Flash / Config</div>
       </div>
 
       <!-- ── Tab 1: Control ── -->
@@ -304,6 +318,34 @@
 
       <!-- ── Tab 4: Plotter Config ── -->
       <div class="tab-content" id="tab-plotter" style="padding: 14px;">
+        <div class="panel">
+          <h2 class="panel-title">⚡ Firmware & Toolchain</h2>
+          <div class="toolchain-status" id="toolchain-status" style="margin-bottom: 8px;">
+            <div class="toolchain-item"><span class="toolchain-name">avrdude</span><span class="toolchain-badge toolchain-missing" id="tc-avrdude">Checking...</span></div>
+            <div class="toolchain-item"><span class="toolchain-name">arduino-cli</span><span class="toolchain-badge toolchain-missing" id="tc-arduino-cli">Checking...</span></div>
+            <div class="toolchain-item"><span class="toolchain-name">esptool</span><span class="toolchain-badge toolchain-missing" id="tc-esptool">Checking...</span></div>
+          </div>
+          <button id="btn-install-tools" class="btn btn-full" style="margin-bottom: 12px;">Auto-Install Missing Tools</button>
+
+          <div class="form-group">
+            <label for="flash-board-type">Target Board</label>
+            <select id="flash-board-type">
+              <option value="mega">Arduino Mega 2560 / RAMPS</option>
+              <option value="nano-new">Arduino Nano (New Bootloader)</option>
+              <option value="nano-old">Arduino Nano (Old Bootloader)</option>
+              <option value="uno">Arduino Uno</option>
+              <option value="esp32">ESP32</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="flash-port">Target Port</label>
+            <div style="display: flex; gap: 6px;">
+              <select id="flash-port" style="flex: 1;"><option value="">Select a Port...</option></select>
+              <button id="btn-detect-ports" class="btn" title="Scan Ports">🔄</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Kinematics -->
         <div class="panel">
           <h2 class="panel-title">Machine Setup</h2>
@@ -433,71 +475,8 @@
           </div>
         </div>
 
-        <button id="btn-compile-flash" class="btn btn-accent btn-full" style="margin-top: 12px;">Apply Config & Flash Firmware</button>
+        <button id="btn-compile-flash" class="btn btn-accent btn-full" style="margin-top: 12px; font-size: 0.9rem; padding: 10px;">Apply Config & Flash Firmware</button>
         <div id="compile-status" style="margin-top: 8px; font-size: 0.82rem; color: var(--text-secondary); text-align: center;"></div>
-        <pre id="compile-terminal" class="flash-terminal" style="display: none;"></pre>
-      </div>
-
-      <!-- ── Tab 5: Firmware Flash ── -->
-      <div class="tab-content" id="tab-firmware" style="padding: 14px;">
-        <div class="panel">
-          <h2 class="panel-title">⚡ Flash Firmware</h2>
-          <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px 0;">Flash pre-compiled or custom firmware to your board.</p>
-
-          <!-- Toolchain Status -->
-          <div class="toolchain-status" id="toolchain-status">
-            <div class="toolchain-item">
-              <span class="toolchain-name">avrdude</span>
-              <span class="toolchain-badge toolchain-missing" id="tc-avrdude">Checking...</span>
-            </div>
-            <div class="toolchain-item">
-              <span class="toolchain-name">arduino-cli</span>
-              <span class="toolchain-badge toolchain-missing" id="tc-arduino-cli">Checking...</span>
-            </div>
-            <div class="toolchain-item">
-              <span class="toolchain-name">esptool</span>
-              <span class="toolchain-badge toolchain-missing" id="tc-esptool">Checking...</span>
-            </div>
-          </div>
-          <button id="btn-install-tools" class="btn btn-full" style="margin-bottom: 12px;">Auto-Install Missing Tools</button>
-
-          <div class="form-group">
-            <label for="flash-board-type">Target Board</label>
-            <select id="flash-board-type">
-              <option value="mega">Arduino Mega 2560</option>
-              <option value="nano-new">Arduino Nano (New Bootloader)</option>
-              <option value="nano-old">Arduino Nano (Old Bootloader)</option>
-              <option value="uno">Arduino Uno</option>
-              <option value="esp32">ESP32 DevKit</option>
-              <option value="esp32s3">ESP32-S3</option>
-              <option value="stm32">STM32 BluePill</option>
-              <option value="pico">Raspberry Pi Pico</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="flash-port">Target Port</label>
-            <div style="display: flex; gap: 6px;">
-              <select id="flash-port" style="flex: 1;">
-                <option value="">Select a Port...</option>
-              </select>
-              <button id="btn-detect-ports" class="btn" title="Scan Ports">🔄</button>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="flash-file-source">Firmware Source</label>
-            <select id="flash-file-source">
-              <option value="bundled">Built-in Release</option>
-              <option value="custom">Custom HEX/BIN File</option>
-            </select>
-            <input type="file" id="flash-file" accept=".hex,.bin,.uf2" style="color: var(--text-primary); font-size: 0.82rem; display: none; margin-top: 6px;" />
-          </div>
-
-          <button id="btn-flash-firmware" class="btn btn-accent btn-full" style="margin-top: 12px;">Flash Firmware</button>
-          <div id="flash-status" style="margin-top: 8px; font-size: 0.82rem; color: var(--text-secondary); text-align: center;"></div>
-          <pre id="flash-terminal" class="flash-terminal" style="display: none;"></pre>
-        </div>
       </div>
     </aside>
 
