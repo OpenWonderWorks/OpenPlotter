@@ -291,10 +291,16 @@ ipcMain.handle('install-toolchain', async () => {
       const isWin = process.platform === 'win32';
       if (isWin) {
         try {
-          await execAsync('winget install -e --id Arduino.ArduinoCLI --accept-package-agreements --accept-source-agreements', { timeout: 120000 });
-          results.push('arduino-cli: installed via winget');
+          const cliDir = path.join(APP_DATA_DIR, 'arduino-cli');
+          if (!fs.existsSync(cliDir)) fs.mkdirSync(cliDir, { recursive: true });
+          const zipPath = path.join(APP_DATA_DIR, 'arduino-cli.zip');
+          
+          const script = `Invoke-WebRequest -Uri 'https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Windows_64bit.zip' -OutFile '${zipPath}'; Expand-Archive -Path '${zipPath}' -DestinationPath '${cliDir}' -Force; Remove-Item -Path '${zipPath}'`;
+          await execAsync(`powershell -Command "${script}"`, { timeout: 120000 });
+          
+          results.push('arduino-cli: installed via direct download');
         } catch (e) {
-          results.push('arduino-cli: winget install failed, please install manually from https://arduino.github.io/arduino-cli/');
+          results.push('arduino-cli: download failed, please install manually from https://arduino.github.io/arduino-cli/');
         }
       } else {
         await execAsync('curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh', { timeout: 120000 });
