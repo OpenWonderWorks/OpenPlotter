@@ -547,16 +547,25 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
   sendProgress(`Port: ${port}`);
   sendProgress(`═══════════════════════════════════════`);
 
-  // Step 1: Modify openplotter_config.h with the user's settings
-  const configPath = path.join(getFirmwareDir(), 'openplotter_config.h');
-  let originalConfig = '';
+  // Step 1: Copy firmware to a temporary build directory to avoid permissions/ASAR issues
+  const firmwareSrc = getFirmwareDir();
+  const sketchPath = path.join(app.getPath('userData'), 'firmware_build');
+  
+  sendProgress(`Preparing build directory: ${sketchPath}`);
+  try {
+    if (fs.existsSync(sketchPath)) {
+      fs.rmSync(sketchPath, { recursive: true, force: true });
+    }
+    fs.cpSync(firmwareSrc, sketchPath, { recursive: true });
+  } catch (err) {
+    throw new Error(`Failed to copy firmware to build directory: ${err.message}`);
+  }
+
+  // Step 2: Modify openplotter_config.h with the user's settings in the build directory
+  const configPath = path.join(sketchPath, 'openplotter_config.h');
 
   if (fs.existsSync(configPath)) {
-    originalConfig = fs.readFileSync(configPath, 'utf-8');
-    sendProgress(`Backed up config: ${configPath}`);
-
-    // Generate #defines based on config
-    let modified = originalConfig;
+    let modified = fs.readFileSync(configPath, 'utf-8');
 
     // Set board profile based on boardType
     const boardProfiles = {
@@ -605,93 +614,84 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
     sendProgress(`Config updated for ${boardDef.name}`);
   }
 
-  try {
-    // Step 1.5: Auto-install required libraries to guarantee compilation works
-    const libArgs = ['lib', 'install', 'AccelStepper', 'TMCStepper', 'Servo'];
-    sendProgress(`\n── Checking/Installing Libraries ──`);
-    sendProgress(`> ${cliPath} ${libArgs.join(' ')}`);
-    
-    await new Promise((resolve, reject) => {
-      const proc = spawn(cliPath, libArgs);
-      proc.stdout.on('data', (data) => sendProgress(data.toString()));
-      proc.stderr.on('data', (data) => sendProgress(data.toString()));
-      proc.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`Library install failed with exit code ${code}`));
-      });
-      proc.on('error', (err) => reject(err));
+  // Step 3: Auto-install required libraries to guarantee compilation works
+  const libArgs = ['lib', 'install', 'AccelStepper', 'TMCStepper', 'Servo'];
+  sendProgress(`\n── Checking/Installing Libraries ──`);
+  sendProgress(`> ${cliPath} ${libArgs.join(' ')}`);
+  
+  await new Promise((resolve, reject) => {
+    const proc = spawn(cliPath, libArgs);
+    proc.stdout.on('data', (data) => sendProgress(data.toString()));
+    proc.stderr.on('data', (data) => sendProgress(data.toString()));
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Library install failed with exit code ${code}`));
+    });
+    proc.on('error', (err) => reject(err));
+  });
+
+  // Step 4: Compile using arduino-cli
+  const compileArgs = [
+    'compile',
+    '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
+    sketchPath,
+    '--verbose',
+  ];
+
+  sendProgress(`\n── Compiling ──`);
+  sendProgress(`> ${cliPath} ${compileArgs.join(' ')}`);
+
+  await new Promise((resolve, reject) => {
+    const proc = spawn(cliPath, compileArgs);
+
+    proc.stdout.on('data', (data) => sendProgress(data.toString()));
+    proc.stderr.on('data', (data) => sendProgress(data.toString()));
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        sendProgress('\n✓ Compilation successful');
+        resolve();
+      } else {
+        sendProgress(`\n✕ Compilation failed (exit code ${code})`);
+        reject(new Error(`Compilation failed with exit code ${code}`));
+      }
     });
 
-    // Step 2: Compile using arduino-cli
-    const sketchPath = getFirmwareDir();
-    const compileArgs = [
-      'compile',
-      '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
-      sketchPath,
-      '--verbose',
-    ];
+    proc.on('error', (err) => reject(err));
+  });
 
-    sendProgress(`\n── Compiling ──`);
-    sendProgress(`> ${cliPath} ${compileArgs.join(' ')}`);
+  // Step 5: Upload
+  const uploadArgs = [
+    'upload',
+    '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
+    '--port', port,
+    sketchPath,
+    '--verbose',
+  ];
 
-    await new Promise((resolve, reject) => {
-      const proc = spawn(cliPath, compileArgs);
+  sendProgress(`\n── Uploading ──`);
+  sendProgress(`> ${cliPath} ${uploadArgs.join(' ')}`);
 
-      proc.stdout.on('data', (data) => sendProgress(data.toString()));
-      proc.stderr.on('data', (data) => sendProgress(data.toString()));
+  await new Promise((resolve, reject) => {
+    const proc = spawn(cliPath, uploadArgs);
 
-      proc.on('close', (code) => {
-        if (code === 0) {
-          sendProgress('\n✓ Compilation successful');
-          resolve();
-        } else {
-          sendProgress(`\n✕ Compilation failed (exit code ${code})`);
-          reject(new Error(`Compilation failed with exit code ${code}`));
-        }
-      });
+    proc.stdout.on('data', (data) => sendProgress(data.toString()));
+    proc.stderr.on('data', (data) => sendProgress(data.toString()));
 
-      proc.on('error', (err) => reject(err));
+    proc.on('close', (code) => {
+      if (code === 0) {
+        sendProgress('\n✓ Upload successful!');
+        resolve();
+      } else {
+        sendProgress(`\n✕ Upload failed (exit code ${code})`);
+        reject(new Error(`Upload failed with exit code ${code}`));
+      }
     });
 
-    // Step 3: Upload
-    const uploadArgs = [
-      'upload',
-      '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
-      '--port', port,
-      sketchPath,
-      '--verbose',
-    ];
+    proc.on('error', (err) => reject(err));
+  });
 
-    sendProgress(`\n── Uploading ──`);
-    sendProgress(`> ${cliPath} ${uploadArgs.join(' ')}`);
-
-    await new Promise((resolve, reject) => {
-      const proc = spawn(cliPath, uploadArgs);
-
-      proc.stdout.on('data', (data) => sendProgress(data.toString()));
-      proc.stderr.on('data', (data) => sendProgress(data.toString()));
-
-      proc.on('close', (code) => {
-        if (code === 0) {
-          sendProgress('\n✓ Upload successful!');
-          resolve();
-        } else {
-          sendProgress(`\n✕ Upload failed (exit code ${code})`);
-          reject(new Error(`Upload failed with exit code ${code}`));
-        }
-      });
-
-      proc.on('error', (err) => reject(err));
-    });
-
-    return 'Compiled and flashed successfully!';
-  } finally {
-    // Step 4: Restore original config.h
-    if (originalConfig && fs.existsSync(configPath)) {
-      fs.writeFileSync(configPath, originalConfig);
-      sendProgress('Config restored to original.');
-    }
-  }
+  return 'Compiled and flashed successfully!';
 });
 
 // File dialogs

@@ -21,7 +21,7 @@
  * environments automatically via platformio.ini.
  */
 // #define BOARD_MEGA_STANDALONE    // Standalone Arduino Mega 2560 (No ESP32)
-// #define BOARD_MEGA_RAMPS14       // Arduino Mega 2560 + RAMPS 1.4 Shield (No ESP32) - RECOMMENDED
+#define BOARD_MEGA_RAMPS14       // Arduino Mega 2560 + RAMPS 1.4 Shield (No ESP32) - RECOMMENDED
 // #define BOARD_NANO_STANDALONE    // Standalone Arduino Nano (No ESP32)
 // #define BOARD_ESP32_STANDALONE   // Standalone ESP32 (No Arduino Mega/Nano)
 // #define BOARD_MEGA_ESP32_HYBRID  // Arduino Mega 2560 (Motion) + ESP32 (WiFi bridge)

@@ -1473,15 +1473,7 @@ function setupFirmwareFlasher() {
   // Flash progress listener
   if (window.electronAPI?.onFlashProgress) {
     window.electronAPI.onFlashProgress((data) => {
-      logManager.cmd(data.trim());
-      if (flashTerminal?.style.display === 'block') {
-        flashTerminal.textContent += data;
-        flashTerminal.scrollTop = flashTerminal.scrollHeight;
-      }
-      if (compileTerminal?.style.display === 'block') {
-        compileTerminal.textContent += data;
-        compileTerminal.scrollTop = compileTerminal.scrollHeight;
-      }
+      logManager.flash(data.trim());
     });
   }
 
@@ -1498,7 +1490,6 @@ function setupFirmwareFlasher() {
         return;
       }
 
-      if (compileTerminal) { compileTerminal.style.display = 'block'; compileTerminal.textContent = ''; }
       if (compileStatus) compileStatus.innerText = 'Compiling & flashing...';
       btnCompileFlash.disabled = true;
       logManager.flash('Starting compile & flash...');
