@@ -61,6 +61,7 @@ class LogManager {
     this.logPanel = null;
     this.logContent = null;
     this.lineCountEl = null;
+    this.systemLogContainer = null;
     this._filterBtns = {};
     this._bound = false;
   }
@@ -200,16 +201,20 @@ class LogManager {
     if (this.logContent) {
       this.logContent.innerHTML = '';
     }
+    if (this.systemLogContainer) {
+      this.systemLogContainer.textContent = '';
+    }
     this._updateLineCount();
   }
 
   /**
    * Bind the log manager to DOM elements
    */
-  bind(panelEl, contentEl, lineCountEl) {
+  bind(panelEl, contentEl, lineCountEl, systemLogContainer) {
     this.logPanel = panelEl;
     this.logContent = contentEl;
     this.lineCountEl = lineCountEl;
+    this.systemLogContainer = systemLogContainer;
     this._bound = true;
   }
 
@@ -250,6 +255,12 @@ class LogManager {
       + `<span class="log-msg">${this._escapeHtml(entry.message)}</span>`;
 
     this.logContent.appendChild(line);
+    
+    // Also append to system logs container if available
+    if (this.systemLogContainer) {
+      const sysLvl = LEVEL_LABELS[entry.level] || 'INF';
+      this.systemLogContainer.textContent += `[${this._formatTime(entry.timestamp)}] [${entry.category}] [${sysLvl}] ${entry.message}\n`;
+    }
 
     // Trim DOM nodes if too many
     while (this.logContent.children.length > 1000) {
@@ -259,6 +270,9 @@ class LogManager {
     // Auto-scroll
     if (this.autoScroll) {
       this.logContent.scrollTop = this.logContent.scrollHeight;
+      if (this.systemLogContainer) {
+        this.systemLogContainer.scrollTop = this.systemLogContainer.scrollHeight;
+      }
     }
 
     this._updateLineCount();

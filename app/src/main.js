@@ -103,8 +103,8 @@ const dom = {
   btnModalCancel: document.getElementById('btn-modal-cancel'),
   btnModalConnect: document.getElementById('btn-modal-connect'),
   connModeRadio: document.getElementsByName('conn-mode'),
-  connParamsUsb: document.getElementById('conn-usb-params'),
-  connParamsWifi: document.getElementById('conn-wifi-params'),
+  connParamsUsb: document.getElementById('conn-params-usb'),
+  connParamsWifi: document.getElementById('conn-params-wifi'),
   connUsbBaud: document.getElementById('conn-usb-baud'),
   connWifiIp: document.getElementById('conn-wifi-ip'),
   
@@ -118,15 +118,14 @@ const dom = {
   
   // Trace settings
   traceSettings: document.getElementById('trace-settings'),
+  traceBrightness: document.getElementById('trace-brightness'),
+  traceContrast: document.getElementById('trace-contrast'),
   traceThreshold: document.getElementById('trace-threshold'),
   traceSmoothing: document.getElementById('trace-smoothing'),
   traceSimplify: document.getElementById('trace-simplify'),
   traceMinLength: document.getElementById('trace-min-length'),
   traceInvert: document.getElementById('trace-invert'),
-  valTraceThreshold: document.getElementById('val-trace-threshold'),
-  valTraceSmoothing: document.getElementById('val-trace-smoothing'),
-  valTraceSimplify: document.getElementById('val-trace-simplify'),
-  valTraceMinLength: document.getElementById('val-trace-min-length'),
+  btnRetrace: document.getElementById('btn-retrace'),
   tracePreview: document.getElementById('trace-preview'),
   
   // Plotter Config
@@ -237,6 +236,8 @@ const dom = {
   logSearch: document.getElementById('log-search'),
   logExport: document.getElementById('log-export'),
   logClear: document.getElementById('log-clear'),
+  systemLogsContainer: document.getElementById('system-logs-container'),
+  btnClearLogs: document.getElementById('btn-clear-logs')
 };
 
 const ctx = dom.canvas.getContext('2d');
@@ -245,12 +246,35 @@ const ctx = dom.canvas.getContext('2d');
 // Initialize Log Manager
 // ══════════════════════════════════════════════════════════════
 function setupLogPanel() {
-  logManager.bind(dom.logPanel, dom.logContent, dom.logLineCount);
+  logManager.bind(dom.logPanel, dom.logContent, dom.logLineCount, dom.systemLogsContainer);
+  
+  if (dom.btnClearLogs) {
+    dom.btnClearLogs.addEventListener('click', () => {
+      logManager.clear();
+    });
+  }
   
   // Log panel collapse/expand
   dom.logHeader.addEventListener('click', (e) => {
     if (e.target.closest('.log-controls')) return; // Don't toggle when clicking controls
     dom.logPanel.classList.toggle('collapsed');
+  });
+
+  // Setup UI tabs
+  document.querySelectorAll('.tab-header').forEach(header => {
+    header.addEventListener('click', () => {
+      // Deactivate all
+      document.querySelectorAll('.tab-header').forEach(h => h.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      // Activate clicked
+      header.classList.add('active');
+      const targetId = header.getAttribute('data-tab');
+      if (targetId) {
+        const targetContent = document.getElementById(targetId);
+        if (targetContent) targetContent.classList.add('active');
+      }
+    });
   });
   
   // Category filter buttons
@@ -565,42 +589,11 @@ function setupFileImporter() {
     if (file) handleFileImport(file);
   });
   
-  
-  // Interactive Trace Settings
-  let traceDebounceTimer;
-  const triggerRetrace = () => {
-    if (state.traceFile) {
-      clearTimeout(traceDebounceTimer);
-      traceDebounceTimer = setTimeout(() => handleRasterFile(state.traceFile), 300);
-    }
-  };
-
-  if (dom.traceThreshold) {
-    dom.traceThreshold.addEventListener('input', (e) => {
-      if (dom.valTraceThreshold) dom.valTraceThreshold.innerText = e.target.value;
-      triggerRetrace();
+  // Re-trace button
+  if (dom.btnRetrace) {
+    dom.btnRetrace.addEventListener('click', () => {
+      if (state.traceFile) handleRasterFile(state.traceFile);
     });
-  }
-  if (dom.traceSmoothing) {
-    dom.traceSmoothing.addEventListener('input', (e) => {
-      if (dom.valTraceSmoothing) dom.valTraceSmoothing.innerText = e.target.value;
-      triggerRetrace();
-    });
-  }
-  if (dom.traceSimplify) {
-    dom.traceSimplify.addEventListener('input', (e) => {
-      if (dom.valTraceSimplify) dom.valTraceSimplify.innerText = parseFloat(e.target.value).toFixed(1);
-      triggerRetrace();
-    });
-  }
-  if (dom.traceMinLength) {
-    dom.traceMinLength.addEventListener('input', (e) => {
-      if (dom.valTraceMinLength) dom.valTraceMinLength.innerText = e.target.value;
-      triggerRetrace();
-    });
-  }
-  if (dom.traceInvert) {
-    dom.traceInvert.addEventListener('change', triggerRetrace);
   }
 }
 
@@ -652,6 +645,8 @@ async function handleRasterFile(file) {
   if (dom.traceSettings) dom.traceSettings.style.display = 'block';
   
   const options = {
+    brightness: parseInt(dom.traceBrightness?.value) || 0,
+    contrast: parseInt(dom.traceContrast?.value) || 0,
     threshold: parseInt(dom.traceThreshold?.value) || 128,
     smoothing: parseInt(dom.traceSmoothing?.value) || 1,
     simplifyTolerance: parseFloat(dom.traceSimplify?.value) || 1.5,
@@ -701,8 +696,9 @@ function autoFitDesign() {
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
   
-  state.svgData.paths.forEach(path => {
-    path.forEach(pt => {
+  state.svgData.paths.forEach(p => {
+    const pts = p.points || p;
+    pts.forEach(pt => {
       if (pt.x < minX) minX = pt.x;
       if (pt.x > maxX) maxX = pt.x;
       if (pt.y < minY) minY = pt.y;
@@ -769,12 +765,19 @@ function drawCanvas() {
     ctx.strokeStyle = 'rgba(34, 211, 238, 0.75)';
     ctx.lineWidth = 1.5;
     
-    state.svgData.paths.forEach(path => {
-      if (path.length === 0) return;
+    state.svgData.paths.forEach(p => {
+      const pts = p.points || p;
+      if (pts.length === 0) return;
+      
+      // Use original path color if available, fallback to default cyan
+      ctx.strokeStyle = p.color && p.color !== '#000000' && p.color !== 'none' 
+        ? p.color 
+        : 'rgba(34, 211, 238, 0.75)';
+        
       ctx.beginPath();
-      ctx.moveTo(path[0].x * scale + offX, path[0].y * scale + offY);
-      for (let i = 1; i < path.length; i++) {
-        ctx.lineTo(path[i].x * scale + offX, path[i].y * scale + offY);
+      ctx.moveTo(pts[0].x * scale + offX, pts[0].y * scale + offY);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x * scale + offX, pts[i].y * scale + offY);
       }
       ctx.stroke();
     });
@@ -1249,6 +1252,38 @@ function setupSettingsHandlers() {
 // ══════════════════════════════════════════════════════════════
 // Plotter Config (head count, tools, drivers)
 // ══════════════════════════════════════════════════════════════
+function setupWorkflowUI() {
+  if (!dom.workflowCards) return;
+  const heads = dom.cfgHeads ? parseInt(dom.cfgHeads.value) : 1;
+  const tool1 = dom.cfgToolHead1 ? dom.cfgToolHead1.options[dom.cfgToolHead1.selectedIndex].text : 'Tool 1';
+  const tool2 = dom.cfgToolHead2 ? dom.cfgToolHead2.options[dom.cfgToolHead2.selectedIndex].text : 'Tool 2';
+  
+  if (heads === 1) {
+    dom.workflowCards.innerHTML = '';
+    return;
+  }
+  
+  const workflows = [
+    { id: 'head1-then-2', label: `${tool1} → ${tool2}` },
+    { id: 'head2-then-1', label: `${tool2} → ${tool1}` },
+    { id: 'map-colors', label: `Map by Color/Layer` }
+  ];
+  
+  dom.workflowCards.innerHTML = '';
+  workflows.forEach(wf => {
+    const card = document.createElement('div');
+    card.className = `profile-card ${state.selectedWorkflow === wf.id ? 'active' : ''}`;
+    card.dataset.workflow = wf.id;
+    card.innerHTML = `<div class="profile-name" style="font-size: 0.75rem;">${wf.label}</div>`;
+    card.addEventListener('click', () => {
+      state.selectedWorkflow = wf.id;
+      Array.from(dom.workflowCards.children).forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+    });
+    dom.workflowCards.appendChild(card);
+  });
+}
+
 function setupPlotterConfigHandlers() {
   if (dom.cfgHeads) {
     dom.cfgHeads.addEventListener('change', (e) => {
@@ -1345,23 +1380,11 @@ window.addEventListener('beforeunload', (e) => {
 // Firmware Flasher
 // ══════════════════════════════════════════════════════════════
 function setupFirmwareFlasher() {
-  const btnFlash = document.getElementById('btn-flash-firmware');
-  const flashStatus = document.getElementById('flash-status');
-  const flashFileInput = document.getElementById('flash-file');
   const boardSelect = document.getElementById('flash-board-type');
-  const fileSourceSelect = document.getElementById('flash-file-source');
-  const flashTerminal = document.getElementById('flash-terminal');
   const compileTerminal = document.getElementById('compile-terminal');
   const btnCompileFlash = document.getElementById('btn-compile-flash');
   const compileStatus = document.getElementById('compile-status');
   const btnInstallTools = document.getElementById('btn-install-tools');
-
-  // File source toggle
-  if (fileSourceSelect && flashFileInput) {
-    fileSourceSelect.addEventListener('change', (e) => {
-      flashFileInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
-    });
-  }
 
   // Auto-detect ports
   const flashPortSelect = document.getElementById('flash-port');
@@ -1451,10 +1474,13 @@ function setupFirmwareFlasher() {
   if (window.electronAPI?.onFlashProgress) {
     window.electronAPI.onFlashProgress((data) => {
       logManager.cmd(data.trim());
-      // Auto-open log panel if collapsed so user can see it
-      const logPanel = document.getElementById('log-panel');
-      if (logPanel && logPanel.classList.contains('collapsed')) {
-        logPanel.classList.remove('collapsed');
+      if (flashTerminal?.style.display === 'block') {
+        flashTerminal.textContent += data;
+        flashTerminal.scrollTop = flashTerminal.scrollHeight;
+      }
+      if (compileTerminal?.style.display === 'block') {
+        compileTerminal.textContent += data;
+        compileTerminal.scrollTop = compileTerminal.scrollHeight;
       }
     });
   }
@@ -1472,7 +1498,8 @@ function setupFirmwareFlasher() {
         return;
       }
 
-      if (compileStatus) compileStatus.innerText = 'Compiling & flashing... Check Activity Log.';
+      if (compileTerminal) { compileTerminal.style.display = 'block'; compileTerminal.textContent = ''; }
+      if (compileStatus) compileStatus.innerText = 'Compiling & flashing...';
       btnCompileFlash.disabled = true;
       logManager.flash('Starting compile & flash...');
 
@@ -1509,62 +1536,7 @@ function setupFirmwareFlasher() {
     });
   }
 
-  // Flash pre-compiled
-  if (btnFlash) {
-    btnFlash.addEventListener('click', async () => {
-      if (!window.electronAPI) {
-        if (flashStatus) flashStatus.innerText = 'Error: Desktop app required.';
-        return;
-      }
-      const comPortName = flashPortSelect?.value || '';
-      if (!comPortName) {
-        if (flashStatus) flashStatus.innerText = 'Error: Select a port.';
-        return;
-      }
 
-      const boardType = boardSelect?.value || 'mega';
-      const fileSource = fileSourceSelect?.value || 'bundled';
-      let hexContent = '';
-
-      if (fileSource === 'custom') {
-        if (!flashFileInput?.files.length) {
-          if (flashStatus) flashStatus.innerText = 'Error: Select a firmware file.';
-          return;
-        }
-        hexContent = await flashFileInput.files[0].text();
-      }
-
-      if (flashTerminal) { flashTerminal.style.display = 'block'; flashTerminal.textContent = ''; }
-      if (flashStatus) flashStatus.innerText = 'Flashing... Do not disconnect!';
-      btnFlash.disabled = true;
-      logManager.flash(`Flashing ${boardType} firmware...`);
-
-      if (state.connected && state.connection) {
-        await state.connection.disconnect();
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      try {
-        let result;
-        if (fileSource === 'bundled') {
-          // If bundled, compile it on the fly with existing config since hex files might not exist
-          if (flashStatus) flashStatus.innerText = 'Compiling firmware...';
-          logManager.flash('Compiling built-in firmware from source...');
-          result = await window.electronAPI.compileAndFlash(boardType, comPortName, {});
-        } else {
-          result = await window.electronAPI.flashFirmware(boardType, fileSource, hexContent, comPortName);
-        }
-        if (flashStatus) flashStatus.innerText = result;
-        logManager.flash(result);
-        showToast(result, 'success');
-      } catch (error) {
-        if (flashStatus) flashStatus.innerText = 'Error: ' + error;
-        logManager.error('Flash failed', error);
-      } finally {
-        btnFlash.disabled = false;
-      }
-    });
-  }
 }
 
 // ══════════════════════════════════════════════════════════════

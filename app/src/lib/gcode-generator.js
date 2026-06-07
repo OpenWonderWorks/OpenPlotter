@@ -84,6 +84,7 @@ export function getWorkflowOptions(tool1, tool2) {
       { id: 'head2-then-1', label: `${verb} Head 2 → Head 1`, icon: '⬅️' },
       { id: 'head1-only', label: `${verb} Head 1 Only`, icon: '1️⃣' },
       { id: 'head2-only', label: `${verb} Head 2 Only`, icon: '2️⃣' },
+      { id: 'map-colors', label: `Map by Color/Layer`, icon: '🎨' },
     ];
   }
 
@@ -92,6 +93,7 @@ export function getWorkflowOptions(tool1, tool2) {
     { id: 'head2-then-1', label: `${verb2} → ${verb1}`, icon: '⬅️', desc: `Head 2 (${tool2}) then Head 1 (${tool1})` },
     { id: 'head1-only', label: `${verb1} Only (Head 1)`, icon: '1️⃣' },
     { id: 'head2-only', label: `${verb2} Only (Head 2)`, icon: '2️⃣' },
+    { id: 'map-colors', label: `Map by Color/Layer`, icon: '🎨' },
   ];
 }
 
@@ -124,18 +126,19 @@ export function estimateJobTime(paths, options = {}) {
   let linearDist = 0;
   let rapidDist = 0;
 
-  paths.forEach(path => {
-    if (path.length < 2) return;
+  paths.forEach(p => {
+    const pts = p.points || p;
+    if (pts.length < 2) return;
     
     // Rapid to first point (estimate from origin)
     rapidDist += Math.sqrt(
-      Math.pow(path[0].x * scale, 2) + Math.pow(path[0].y * scale, 2)
+      Math.pow(pts[0].x * scale, 2) + Math.pow(pts[0].y * scale, 2)
     );
 
     // Linear moves along path
-    for (let i = 1; i < path.length; i++) {
-      const dx = (path[i].x - path[i - 1].x) * scale;
-      const dy = (path[i].y - path[i - 1].y) * scale;
+    for (let i = 1; i < pts.length; i++) {
+      const dx = (pts[i].x - pts[i - 1].x) * scale;
+      const dy = (pts[i].y - pts[i - 1].y) * scale;
       linearDist += Math.sqrt(dx * dx + dy * dy);
     }
   });
@@ -235,7 +238,9 @@ export function generateGcode(paths, options = {}) {
   }
 
   // Generate paths for a single head
-  function generateHeadPaths(headIdx, tool, offset) {
+  function generateHeadPaths(headIdx, tool, offset, targetPaths = paths) {
+    if (!targetPaths || targetPaths.length === 0) return;
+    
     const verb = getToolVerb(tool);
     const action = getToolAction(tool);
 
@@ -247,25 +252,22 @@ export function generateGcode(paths, options = {}) {
       gcode.push(``);
       gcode.push(`; ── Pass ${pass}/${passCount} (Head ${headIdx + 1} — ${action}) ──`);
 
-      paths.forEach((path, pathIdx) => {
-        if (path.length === 0) return;
+      targetPaths.forEach((p, pathIdx) => {
+        const pts = p.points || p;
+        if (pts.length === 0) return;
 
-        gcode.push(``);
-        gcode.push(`; Path ${pathIdx + 1} (${path.length} pts)`);
+        gcode.push(`; -- Path ${pathIdx + 1} --`);
 
-        // Rapid to first point
-        const startPt = transform(path[0], offset);
-        gcode.push(`G0 X${startPt.x} Y${startPt.y} F${feedRateRapid} ; Travel`);
-
-        // Tool down
-        gcode.push(`M3 S${bladePressure} ; Tool down — ${action.toLowerCase()}`);
+        const p0 = transform(pts[0], offset);
+        gcode.push(`G0 X${p0.x} Y${p0.y} F${feedRateRapid} ; Rapid to start`);
+        gcode.push(`M3 S${bladePressure} ; Tool down`);
         if (toolDownDelay > 0) {
-          gcode.push(`G4 P${toolDownDelay} ; Wait for engagement`);
+          gcode.push(`G4 P${toolDownDelay} ; Wait for penetration`);
         }
 
-        // Move along path
-        for (let i = 1; i < path.length; i++) {
-          const pt = transform(path[i], offset);
+        // Cut moves
+        for (let i = 1; i < pts.length; i++) {
+          const pt = transform(pts[i], offset);
           gcode.push(`G1 X${pt.x} Y${pt.y} F${feedRateLinear}`);
         }
 
@@ -284,22 +286,33 @@ export function generateGcode(paths, options = {}) {
   } else {
     switch (workflow) {
       case 'head1-then-2':
-        generateHeadPaths(0, toolHead1, { x: 0, y: 0 });
-        generateHeadPaths(1, toolHead2, head2Offset);
+        generateHeadPaths(0, toolHead1, { x: 0, y: 0 }, paths);
+        generateHeadPaths(1, toolHead2, head2Offset, paths);
         break;
       case 'head2-then-1':
-        generateHeadPaths(1, toolHead2, head2Offset);
-        generateHeadPaths(0, toolHead1, { x: 0, y: 0 });
+        generateHeadPaths(1, toolHead2, head2Offset, paths);
+        generateHeadPaths(0, toolHead1, { x: 0, y: 0 }, paths);
         break;
       case 'head1-only':
-        generateHeadPaths(0, toolHead1, { x: 0, y: 0 });
+        generateHeadPaths(0, toolHead1, { x: 0, y: 0 }, paths);
         break;
       case 'head2-only':
-        generateHeadPaths(1, toolHead2, head2Offset);
+        generateHeadPaths(1, toolHead2, head2Offset, paths);
+        break;
+      case 'map-colors':
+        // Map paths by color: Head 1 gets primary color, Head 2 gets all others
+        const colors = [...new Set(paths.map(p => p.color || '#000000'))];
+        const head1Color = colors[0];
+        
+        const head1Paths = paths.filter(p => (p.color || '#000000') === head1Color);
+        const head2Paths = paths.filter(p => (p.color || '#000000') !== head1Color);
+        
+        if (head1Paths.length > 0) generateHeadPaths(0, toolHead1, { x: 0, y: 0 }, head1Paths);
+        if (head2Paths.length > 0) generateHeadPaths(1, toolHead2, head2Offset, head2Paths);
         break;
       default:
-        generateHeadPaths(0, toolHead1, { x: 0, y: 0 });
-        generateHeadPaths(1, toolHead2, head2Offset);
+        generateHeadPaths(0, toolHead1, { x: 0, y: 0 }, paths);
+        generateHeadPaths(1, toolHead2, head2Offset, paths);
     }
   }
 

@@ -431,6 +431,12 @@ export function parseSVG(svgText, tolerance = 0.15) {
     
     const tagName = node.tagName ? node.tagName.toLowerCase() : '';
     
+    // Extract color
+    let color = '#000000';
+    if (node.getAttribute) {
+      color = node.getAttribute('stroke') || node.getAttribute('fill') || node.style?.stroke || node.style?.fill || '#000000';
+    }
+    
     if (tagName === 'path') {
       const d = node.getAttribute('d');
       if (d) {
@@ -438,7 +444,7 @@ export function parseSVG(svgText, tolerance = 0.15) {
         const polys = pathCommandsToPolylines(cmds, tolerance);
         polys.forEach(poly => {
           const transformed = poly.map(pt => m.apply(pt.x, pt.y));
-          allPaths.push(transformed);
+          allPaths.push({ color, points: transformed });
         });
       }
     } else if (tagName === 'rect') {
@@ -454,7 +460,7 @@ export function parseSVG(svgText, tolerance = 0.15) {
         m.apply(x, y + h),
         m.apply(x, y)
       ];
-      allPaths.push(poly);
+      allPaths.push({ color, points: poly });
     } else if (tagName === 'circle') {
       const cx = parseFloat(node.getAttribute('cx') || 0);
       const cy = parseFloat(node.getAttribute('cy') || 0);
@@ -466,7 +472,7 @@ export function parseSVG(svgText, tolerance = 0.15) {
         const theta = (i / steps) * 2 * Math.PI;
         poly.push(m.apply(cx + r * Math.cos(theta), cy + r * Math.sin(theta)));
       }
-      allPaths.push(poly);
+      allPaths.push({ color, points: poly });
     } else if (tagName === 'ellipse') {
       const cx = parseFloat(node.getAttribute('cx') || 0);
       const cy = parseFloat(node.getAttribute('cy') || 0);
@@ -479,17 +485,17 @@ export function parseSVG(svgText, tolerance = 0.15) {
         const theta = (i / steps) * 2 * Math.PI;
         poly.push(m.apply(cx + rx * Math.cos(theta), cy + ry * Math.sin(theta)));
       }
-      allPaths.push(poly);
+      allPaths.push({ color, points: poly });
     } else if (tagName === 'line') {
       const x1 = parseFloat(node.getAttribute('x1') || 0);
       const y1 = parseFloat(node.getAttribute('y1') || 0);
       const x2 = parseFloat(node.getAttribute('x2') || 0);
       const y2 = parseFloat(node.getAttribute('y2') || 0);
       
-      allPaths.push([
+      allPaths.push({ color, points: [
         m.apply(x1, y1),
         m.apply(x2, y2)
-      ]);
+      ]});
     } else if (tagName === 'polyline' || tagName === 'polygon') {
       const pointsStr = node.getAttribute('points') || '';
       const parts = pointsStr.trim().split(/[,\s]+/).map(parseFloat);
@@ -503,7 +509,7 @@ export function parseSVG(svgText, tolerance = 0.15) {
         poly.push({ ...poly[0] });
       }
       if (poly.length > 0) {
-        allPaths.push(poly);
+        allPaths.push({ color, points: poly });
       }
     }
     

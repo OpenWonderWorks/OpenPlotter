@@ -34,15 +34,36 @@ function loadImageToCanvas(file) {
 }
 
 /**
- * Convert RGBA image data to grayscale array
+ * Convert RGBA image data to grayscale array, applying brightness and contrast
  */
-function toGrayscale(imageData) {
+function toGrayscale(imageData, brightness = 0, contrast = 0) {
   const { data, width, height } = imageData;
   const gray = new Uint8Array(width * height);
+  
+  // Contrast factor: f = (259 * (C + 255)) / (255 * (259 - C))
+  const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
 
   for (let i = 0; i < data.length; i += 4) {
+    let r = data[i];
+    let g = data[i + 1];
+    let b = data[i + 2];
+    
+    if (contrast !== 0) {
+      r = factor * (r - 128) + 128;
+      g = factor * (g - 128) + 128;
+      b = factor * (b - 128) + 128;
+    }
+    
+    r += brightness;
+    g += brightness;
+    b += brightness;
+    
+    r = Math.max(0, Math.min(255, r));
+    g = Math.max(0, Math.min(255, g));
+    b = Math.max(0, Math.min(255, b));
+
     // Luminance formula
-    gray[i / 4] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    gray[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
   }
 
   return gray;
@@ -276,14 +297,16 @@ export async function traceImage(file, options = {}) {
     smoothing = 1,
     simplifyTolerance = 1.5,
     minPathLength = 5,
-    blur = true
+    blur = true,
+    brightness = 0,
+    contrast = 0
   } = options;
 
   // Load image
   const { imageData, width, height, canvas } = await loadImageToCanvas(file);
 
-  // Convert to grayscale
-  let gray = toGrayscale(imageData);
+  // Convert to grayscale with adjustments
+  let gray = toGrayscale(imageData, brightness, contrast);
 
   // Optional blur to reduce noise
   if (blur) {

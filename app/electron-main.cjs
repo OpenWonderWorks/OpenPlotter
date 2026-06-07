@@ -313,18 +313,17 @@ ipcMain.handle('install-toolchain', async () => {
     results.push('arduino-cli: already found');
   }
 
-  // Install arduino:avr core and required libraries via arduino-cli
+  // Install arduino:avr core via arduino-cli
   const cliPath = findExecutable('arduino-cli');
   if (cliPath) {
     try {
-      await execAsync(`"${cliPath}" core update-index`, { timeout: 120000 });
       await execAsync(`"${cliPath}" core install arduino:avr`, { timeout: 300000 });
       results.push('arduino:avr core: installed');
       
-      await execAsync(`"${cliPath}" lib install TMCStepper`, { timeout: 120000 });
-      results.push('TMCStepper library: installed');
+      await execAsync(`"${cliPath}" lib install AccelStepper TMCStepper Servo`, { timeout: 300000 });
+      results.push('libraries (AccelStepper, TMCStepper, Servo): installed');
     } catch (e) {
-      results.push(`arduino-cli packages: ${e.message}`);
+      results.push(`arduino-cli setup: ${e.message}`);
     }
   }
 
@@ -549,22 +548,12 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
   sendProgress(`═══════════════════════════════════════`);
 
   // Step 1: Modify openplotter_config.h with the user's settings
-  // Step 1: Copy firmware source to a writable directory
-  const sourceDir = getFirmwareDir();
-  const buildDir = path.join(APP_DATA_DIR, 'firmware_src');
-  
-  if (fs.existsSync(buildDir)) {
-    fs.rmSync(buildDir, { recursive: true, force: true });
-  }
-  fs.cpSync(sourceDir, buildDir, { recursive: true });
-  sendProgress(`Copied firmware source to writable directory: ${buildDir}`);
-
-  // Step 2: Modify openplotter_config.h with the user's settings
-  const configPath = path.join(buildDir, 'openplotter_config.h');
+  const configPath = path.join(getFirmwareDir(), 'openplotter_config.h');
   let originalConfig = '';
 
   if (fs.existsSync(configPath)) {
     originalConfig = fs.readFileSync(configPath, 'utf-8');
+    sendProgress(`Backed up config: ${configPath}`);
 
     // Generate #defines based on config
     let modified = originalConfig;
@@ -617,11 +606,28 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
   }
 
   try {
-    // Step 3: Compile using arduino-cli
+    // Step 1.5: Auto-install required libraries to guarantee compilation works
+    const libArgs = ['lib', 'install', 'AccelStepper', 'TMCStepper', 'Servo'];
+    sendProgress(`\n── Checking/Installing Libraries ──`);
+    sendProgress(`> ${cliPath} ${libArgs.join(' ')}`);
+    
+    await new Promise((resolve, reject) => {
+      const proc = spawn(cliPath, libArgs);
+      proc.stdout.on('data', (data) => sendProgress(data.toString()));
+      proc.stderr.on('data', (data) => sendProgress(data.toString()));
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Library install failed with exit code ${code}`));
+      });
+      proc.on('error', (err) => reject(err));
+    });
+
+    // Step 2: Compile using arduino-cli
+    const sketchPath = getFirmwareDir();
     const compileArgs = [
       'compile',
       '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
-      buildDir,
+      sketchPath,
       '--verbose',
     ];
 
@@ -647,12 +653,12 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
       proc.on('error', (err) => reject(err));
     });
 
-    // Step 4: Upload
+    // Step 3: Upload
     const uploadArgs = [
       'upload',
       '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
       '--port', port,
-      buildDir,
+      sketchPath,
       '--verbose',
     ];
 
