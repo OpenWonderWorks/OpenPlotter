@@ -2,14 +2,15 @@ const fs = require('fs');
 const https = require('https');
 const path = require('path');
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "github_pat_11A2YOS7Q02gKOf1wK8n2Q_0zR6fF0r2T5RjS2yv5dFhLwL5O7C2z1E7s5Z7S1g5U6D7O4W5R7T9Z7X3N"; 
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN; 
 const REPO_OWNER = 'OpenWonderWorks';
+
 const REPO_NAME = 'OpenPlotter';
-const TAG_NAME = 'v3.1.8';
-const RELEASE_NAME = 'OpenPlotter v3.1.8: Flash UI Hotfix';
-const BODY = 'This release fixes a critical ReferenceError in the UI that crashed the application when attempting to flash firmware, ensuring that progress logs stream cleanly into the System Logs tab.';
-const ASSET_PATH = path.join(__dirname, 'app', 'dist-desktop', 'OpenPlotter 3.1.8.exe');
-const ASSET_NAME = 'OpenPlotter-3.1.8-Setup.exe';
+const TAG_NAME = 'v3.2.0';
+const RELEASE_NAME = 'OpenPlotter v3.2.0: Flash Orchestrator';
+const BODY = 'This release completely redesigns the firmware flashing experience. The simple flash button has been replaced with a fully-featured Flash Orchestrator modal featuring granular control toggles (Clean Build, Verify Flash, Auto-Install Libraries), a live build tracker, and a dedicated syntax-highlighted console output for arduino-cli.';
+const ASSET_PATH = path.join(__dirname, 'app', 'dist-desktop', 'OpenPlotter 3.2.0.exe');
+const ASSET_NAME = 'OpenPlotter-3.2.0-Setup.exe';
 
 function apiRequest(method, endpoint, body, isUpload = false) {
   return new Promise((resolve, reject) => {
@@ -20,7 +21,7 @@ function apiRequest(method, endpoint, body, isUpload = false) {
       method: method,
       headers: {
         'User-Agent': 'Node.js',
-        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github.v3+json'
       }
     };

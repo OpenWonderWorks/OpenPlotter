@@ -527,7 +527,7 @@ async function flashWithEsptool(boardDef, fileSource, hexContent, port, sendProg
 }
 
 // Compile and flash from source
-ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, config }) => {
+ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, config, advanced = {} }) => {
   const boardDef = BOARD_DEFS[boardType];
   if (!boardDef) throw new Error(`Unknown board: ${boardType}`);
 
@@ -545,16 +545,23 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
   sendProgress(`═══════════════════════════════════════`);
   sendProgress(`Compile & Flash: ${boardDef.name}`);
   sendProgress(`Port: ${port}`);
+  if (advanced.cleanBuild) sendProgress(`[Advanced] Clean Build Enabled`);
+  if (advanced.verifyUpload) sendProgress(`[Advanced] Verify Flash Enabled`);
   sendProgress(`═══════════════════════════════════════`);
 
   // Step 1: Copy firmware to a temporary build directory to avoid permissions/ASAR issues
   const firmwareSrc = getFirmwareDir();
-  const sketchPath = path.join(app.getPath('userData'), 'firmware_build');
+  // BUG FIX: The sketch directory must match the sketch name (OpenPlotter.ino)
+  const buildDir = path.join(app.getPath('userData'), 'firmware_build');
+  const sketchPath = path.join(buildDir, 'OpenPlotter');
   
   sendProgress(`Preparing build directory: ${sketchPath}`);
   try {
     if (fs.existsSync(sketchPath)) {
       fs.rmSync(sketchPath, { recursive: true, force: true });
+    }
+    if (!fs.existsSync(buildDir)) {
+      fs.mkdirSync(buildDir, { recursive: true });
     }
     fs.cpSync(firmwareSrc, sketchPath, { recursive: true });
   } catch (err) {
@@ -615,25 +622,30 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
   }
 
   // Step 3: Auto-install required libraries to guarantee compilation works
-  const libArgs = ['lib', 'install', 'AccelStepper', 'TMCStepper', 'Servo'];
-  sendProgress(`\n── Checking/Installing Libraries ──`);
-  sendProgress(`> ${cliPath} ${libArgs.join(' ')}`);
-  
-  await new Promise((resolve, reject) => {
-    const proc = spawn(cliPath, libArgs);
-    proc.stdout.on('data', (data) => sendProgress(data.toString()));
-    proc.stderr.on('data', (data) => sendProgress(data.toString()));
-    proc.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Library install failed with exit code ${code}`));
+  if (advanced.installLibraries !== false) {
+    const libArgs = ['lib', 'install', 'AccelStepper', 'TMCStepper', 'Servo'];
+    sendProgress(`\n── Checking/Installing Libraries ──`);
+    sendProgress(`> ${cliPath} ${libArgs.join(' ')}`);
+    
+    await new Promise((resolve, reject) => {
+      const proc = spawn(cliPath, libArgs);
+      proc.stdout.on('data', (data) => sendProgress(data.toString()));
+      proc.stderr.on('data', (data) => sendProgress(data.toString()));
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Library install failed with exit code ${code}`));
+      });
+      proc.on('error', (err) => reject(err));
     });
-    proc.on('error', (err) => reject(err));
-  });
+  } else {
+    sendProgress(`\n[Advanced] Skipping library auto-install.`);
+  }
 
   // Step 4: Compile using arduino-cli
   const compileArgs = [
     'compile',
     '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
+    ...(advanced.cleanBuild ? ['--clean'] : []),
     sketchPath,
     '--verbose',
   ];
@@ -665,6 +677,7 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
     'upload',
     '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
     '--port', port,
+    ...(advanced.verifyUpload ? ['--verify'] : []),
     sketchPath,
     '--verbose',
   ];

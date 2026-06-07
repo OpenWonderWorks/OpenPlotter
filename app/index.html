@@ -489,8 +489,7 @@
           </div>
           <button id="btn-install-tools" class="btn btn-full" style="margin-bottom: 12px;">Auto-Install Missing Tools</button>
 
-          <button id="btn-compile-flash" class="btn btn-accent btn-full">Compile & Flash Custom Config</button>
-          <div id="compile-status" style="margin-top: 8px; font-size: 0.82rem; color: var(--text-secondary); text-align: center;"></div>
+          <button id="btn-open-flash-modal" class="btn btn-accent btn-full">Open Flash Orchestrator</button>
         </div>
       </div>
 
@@ -548,7 +547,6 @@
     </footer>
   </div>
 
-  <!-- ═══════════ Connection Modal ═══════════ -->
   <div id="modal-connect" class="modal-overlay">
     <div class="modal">
       <header class="modal-header">
@@ -603,6 +601,70 @@
       <footer class="modal-footer">
         <button id="btn-modal-cancel" class="btn">Cancel</button>
         <button id="btn-modal-connect" class="btn btn-primary">Connect</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ═══════════ Flash Orchestrator Modal ═══════════ -->
+  <div id="modal-flash" class="modal-overlay" style="display: none;">
+    <div class="modal flash-modal" style="width: 800px; max-width: 90vw; height: 600px; display: flex; flex-direction: column;">
+      <header class="modal-header">
+        <span>⚡ Firmware Flash Orchestrator</span>
+        <button id="btn-close-flash" class="btn" style="padding: 2px 8px; border: none; font-size: 1.1rem; background: transparent;">&times;</button>
+      </header>
+      
+      <div class="modal-body flash-body" style="flex: 1; display: flex; padding: 0; overflow: hidden;">
+        <!-- Left Sidebar: Advanced Toggles & Tracking -->
+        <div class="flash-sidebar">
+          <h3 class="flash-sidebar-title">Advanced Options</h3>
+          
+          <label class="flash-toggle">
+            <input type="checkbox" id="flash-opt-clean">
+            <div class="flash-toggle-text">
+              <strong>Clean Build</strong>
+              <span>Erase cached build artifacts before compiling</span>
+            </div>
+          </label>
+          
+          <label class="flash-toggle">
+            <input type="checkbox" id="flash-opt-verify" checked>
+            <div class="flash-toggle-text">
+              <strong>Verify Flash</strong>
+              <span>Verify memory against hex after uploading</span>
+            </div>
+          </label>
+          
+          <label class="flash-toggle">
+            <input type="checkbox" id="flash-opt-libs" checked>
+            <div class="flash-toggle-text">
+              <strong>Auto-Install Libraries</strong>
+              <span>Install TMCStepper, AccelStepper, etc.</span>
+            </div>
+          </label>
+
+          <h3 class="flash-sidebar-title" style="margin-top: 24px;">Build Progress</h3>
+          <ul class="flash-steps" id="flash-steps">
+            <li class="flash-step pending" data-step="init"><div class="step-dot"></div> Initialization</li>
+            <li class="flash-step pending" data-step="config"><div class="step-dot"></div> Inject Configurations</li>
+            <li class="flash-step pending" data-step="libs"><div class="step-dot"></div> Resolve Dependencies</li>
+            <li class="flash-step pending" data-step="compile"><div class="step-dot"></div> Compile Source</li>
+            <li class="flash-step pending" data-step="upload"><div class="step-dot"></div> Upload to Board</li>
+          </ul>
+        </div>
+        
+        <!-- Right Main Area: Terminal Console -->
+        <div class="flash-console-container">
+          <div class="flash-console-header">
+            <span>Terminal Output</span>
+            <div class="flash-console-status" id="flash-console-status">Ready</div>
+          </div>
+          <pre id="flash-terminal" class="flash-terminal"></pre>
+        </div>
+      </div>
+      
+      <footer class="modal-footer" style="background: var(--bg-card);">
+        <button id="btn-flash-cancel" class="btn">Close</button>
+        <button id="btn-flash-start" class="btn btn-accent" style="min-width: 150px;">Start Flash Sequence</button>
       </footer>
     </div>
   </div>

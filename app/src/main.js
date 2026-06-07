@@ -1470,34 +1470,122 @@ function setupFirmwareFlasher() {
     });
   }
 
+
+
+  // Flash Orchestrator Modal
+  const btnOpenFlashModal = document.getElementById('btn-open-flash-modal');
+  const modalFlash = document.getElementById('modal-flash');
+  const btnCloseFlash = document.getElementById('btn-close-flash');
+  const btnFlashCancel = document.getElementById('btn-flash-cancel');
+  const btnFlashStart = document.getElementById('btn-flash-start');
+  const flashTerminal = document.getElementById('flash-terminal');
+  const flashConsoleStatus = document.getElementById('flash-console-status');
+  const flashSteps = {
+    init: document.querySelector('.flash-step[data-step="init"]'),
+    config: document.querySelector('.flash-step[data-step="config"]'),
+    libs: document.querySelector('.flash-step[data-step="libs"]'),
+    compile: document.querySelector('.flash-step[data-step="compile"]'),
+    upload: document.querySelector('.flash-step[data-step="upload"]')
+  };
+
+  const updateFlashStep = (stepName, status) => {
+    const el = flashSteps[stepName];
+    if (!el) return;
+    el.className = `flash-step ${status}`; // status: pending, active, done, error
+  };
+
+  const writeFlashTerminal = (text, type = 'info') => {
+    const span = document.createElement('span');
+    span.className = type;
+    span.textContent = text;
+    flashTerminal.appendChild(span);
+    flashTerminal.scrollTop = flashTerminal.scrollHeight;
+  };
+
   // Flash progress listener
   if (window.electronAPI?.onFlashProgress) {
     window.electronAPI.onFlashProgress((data) => {
-      logManager.flash(data.trim());
+      const text = data.trim();
+      if (!text) return;
+
+      logManager.flash(text);
+      
+      let type = 'info';
+      if (text.startsWith('✕') || text.includes('Error')) type = 'error';
+      else if (text.startsWith('✓')) type = 'success';
+      else if (text.startsWith('>')) type = 'cmd';
+
+      writeFlashTerminal(text + '\n', type);
+
+      // Step transitions
+      if (text.includes('Injecting configuration')) {
+        updateFlashStep('init', 'done');
+        updateFlashStep('config', 'active');
+      } else if (text.includes('Checking/Installing Libraries')) {
+        updateFlashStep('config', 'done');
+        updateFlashStep('libs', 'active');
+      } else if (text.includes('── Compiling ──')) {
+        updateFlashStep('config', 'done'); // in case libs was skipped
+        updateFlashStep('libs', 'done');
+        updateFlashStep('compile', 'active');
+      } else if (text.includes('── Uploading ──')) {
+        updateFlashStep('compile', 'done');
+        updateFlashStep('upload', 'active');
+      }
     });
   }
 
+  if (btnOpenFlashModal) {
+    btnOpenFlashModal.addEventListener('click', () => {
+      modalFlash.style.display = 'flex';
+      flashTerminal.innerHTML = '';
+      flashConsoleStatus.textContent = 'Ready';
+      flashConsoleStatus.style.color = '#8b949e';
+      Object.keys(flashSteps).forEach(k => updateFlashStep(k, 'pending'));
+    });
+  }
+
+  const closeFlashModal = () => {
+    if (btnFlashStart.disabled) {
+      showToast('Wait for flash to complete before closing.', 'warning');
+      return;
+    }
+    modalFlash.style.display = 'none';
+  };
+
+  if (btnCloseFlash) btnCloseFlash.addEventListener('click', closeFlashModal);
+  if (btnFlashCancel) btnFlashCancel.addEventListener('click', closeFlashModal);
+
   // Compile & Flash
-  if (btnCompileFlash) {
-    btnCompileFlash.addEventListener('click', async () => {
+  if (btnFlashStart) {
+    btnFlashStart.addEventListener('click', async () => {
       if (!window.electronAPI) {
-        if (compileStatus) compileStatus.innerText = 'Error: Desktop app required.';
+        writeFlashTerminal('Error: Desktop app required.\n', 'error');
         return;
       }
       const portName = flashPortSelect?.value || '';
       if (!portName) {
-        if (compileStatus) compileStatus.innerText = 'Error: Select a port in Flash tab.';
+        writeFlashTerminal('Error: Select a target port in the configuration tab.\n', 'error');
         return;
       }
 
-      if (compileStatus) compileStatus.innerText = 'Compiling & flashing...';
-      btnCompileFlash.disabled = true;
-      logManager.flash('Starting compile & flash...');
+      btnFlashStart.disabled = true;
+      btnFlashCancel.disabled = true;
+      btnCloseFlash.disabled = true;
+      
+      flashTerminal.innerHTML = '';
+      flashConsoleStatus.textContent = 'Orchestrating...';
+      flashConsoleStatus.style.color = '#a5d6ff';
+      logManager.flash('Starting flash sequence...');
 
       if (state.connected && state.connection) {
+        writeFlashTerminal('Disconnecting from active session...\n', 'info');
         await state.connection.disconnect();
         await new Promise(r => setTimeout(r, 500));
       }
+
+      Object.keys(flashSteps).forEach(k => updateFlashStep(k, 'pending'));
+      updateFlashStep('init', 'active');
 
       const config = {
         kinematics: dom.cfgKinematics?.value || 'cartesian',
@@ -1513,16 +1601,38 @@ function setupFirmwareFlasher() {
         maxAccel: document.getElementById('cfg-max-accel')?.value || '500'
       };
 
+      const advanced = {
+        cleanBuild: document.getElementById('flash-opt-clean')?.checked || false,
+        verifyUpload: document.getElementById('flash-opt-verify')?.checked || false,
+        installLibraries: document.getElementById('flash-opt-libs')?.checked || false
+      };
+
       try {
-        const result = await window.electronAPI.compileAndFlash(boardSelect?.value || 'mega', portName, config);
-        if (compileStatus) compileStatus.innerText = result;
+        const result = await window.electronAPI.compileAndFlash(boardSelect?.value || 'mega', portName, config, advanced);
+        updateFlashStep('upload', 'done');
+        flashConsoleStatus.textContent = 'Success';
+        flashConsoleStatus.style.color = '#3fb950';
+        writeFlashTerminal(`\n${result}\n`, 'success');
         logManager.flash(result);
-        showToast(result, 'success');
+        showToast('Firmware flashed successfully!', 'success');
       } catch (error) {
-        if (compileStatus) compileStatus.innerText = 'Error: ' + error;
-        logManager.error('Compile & flash failed', error);
+        flashConsoleStatus.textContent = 'Failed';
+        flashConsoleStatus.style.color = '#f85149';
+        writeFlashTerminal(`\nFatal Error: ${error}\n`, 'error');
+        logManager.error('Flash failed', error);
+        showToast('Firmware flash failed.', 'error');
+        
+        // Mark the active step as error
+        for (const [key, el] of Object.entries(flashSteps)) {
+          if (el && el.classList.contains('active')) {
+            updateFlashStep(key, 'error');
+            break;
+          }
+        }
       } finally {
-        btnCompileFlash.disabled = false;
+        btnFlashStart.disabled = false;
+        btnFlashCancel.disabled = false;
+        btnCloseFlash.disabled = false;
       }
     });
   }

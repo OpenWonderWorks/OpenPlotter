@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   // Firmware flashing
   flashFirmware: (boardType, fileSource, hexContent, port) => ipcRenderer.invoke('flash-firmware', { boardType, fileSource, hexContent, port }),
-  compileAndFlash: (boardType, port, config) => ipcRenderer.invoke('compile-and-flash-firmware', { boardType, port, config }),
+  compileAndFlash: (boardType, port, config, advanced) => ipcRenderer.invoke('compile-and-flash-firmware', { boardType, port, config, advanced }),
   detectBoards: () => ipcRenderer.invoke('detect-boards'),
   onFlashProgress: (callback) => ipcRenderer.on('flash-progress', (event, data) => callback(data)),
   
