@@ -9,11 +9,7 @@
     <title>OpenPlotter — Plotter Companion</title>
   </head>
   <body>
-  <div class="bg-orbs">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
-  </div>
+
 
   <div class="app-layout">
     <!-- ═══════════ Header ═══════════ -->
@@ -40,7 +36,7 @@
     <aside class="sidebar glass-panel">
       <!-- Design Import -->
       <section class="panel">
-        <h2 class="panel-title">📁 Design Import</h2>
+        <h2 class="panel-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> Design Import</h2>
         <div id="dropzone" class="dropzone">
           <div class="dropzone-icon">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
@@ -102,7 +98,7 @@
 
       <!-- Layout & Transforms -->
       <section class="panel">
-        <h2 class="panel-title">📐 Layout & Transforms</h2>
+        <h2 class="panel-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 22 22 22"></polygon></svg> Layout & Transforms</h2>
         <div class="input-row">
           <div class="form-group">
             <label for="cfg-scale">Scale Factor</label>
@@ -127,7 +123,7 @@
 
       <!-- Material Profiles -->
       <section class="panel" id="panel-materials">
-        <h2 class="panel-title" id="panel-materials-title">🎨 Material Profiles</h2>
+        <h2 class="panel-title" id="panel-materials-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.836-.437-1.124-.298-.334-.486-.778-.486-1.266 0-1.026.832-1.859 1.859-1.859h2.385C20.654 16.063 22 14.184 22 12c0-5.5-4.5-10-10-10z"></path></svg> Material Profiles</h2>
         <div class="profile-cards">
           <div class="profile-card active" data-profile="vinyl">
             <div class="profile-name">Vinyl</div>
@@ -150,7 +146,7 @@
 
       <!-- Tool Parameters (labels update based on tool) -->
       <section class="panel" style="border-bottom: none;">
-        <h2 class="panel-title" id="params-title">⚙ Parameters</h2>
+        <h2 class="panel-title" id="params-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg> Parameters</h2>
         <div class="form-group">
           <label for="cfg-pressure" id="label-pressure">Pressure (0-255)</label>
           <input type="number" id="cfg-pressure" value="90" min="0" max="255">
@@ -230,7 +226,7 @@
       <div class="tab-content active" id="tab-control">
         <!-- Safety -->
         <div class="panel">
-          <h2 class="panel-title">🛑 Safety</h2>
+          <h2 class="panel-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Safety</h2>
           <div class="input-row">
             <button id="btn-estop" class="btn btn-danger btn-full">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
@@ -245,7 +241,7 @@
 
         <!-- Jog -->
         <div class="panel">
-          <h2 class="panel-title">🕹 Jogging</h2>
+          <h2 class="panel-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg> Jogging</h2>
           <div style="display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 6px 0;">
             <div class="jog-grid">
               <div></div>
@@ -316,7 +312,7 @@
       <div class="tab-content" id="tab-plotter" style="padding: 14px;">
         <!-- Kinematics -->
         <div class="panel">
-          <h2 class="panel-title">Machine Setup</h2>
+          <h2 class="panel-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg> Machine Setup</h2>
           <div class="form-group">
             <label for="cfg-kinematics">Motion System</label>
             <select id="cfg-kinematics">
@@ -350,7 +346,7 @@
 
         <!-- Tool Configuration -->
         <div class="panel">
-          <h2 class="panel-title">Tool Heads</h2>
+          <h2 class="panel-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg> Tool Heads</h2>
           <div class="form-group">
             <label for="cfg-tool-head1">Head 1 Tool</label>
             <select id="cfg-tool-head1">
@@ -381,7 +377,7 @@
 
         <!-- Drivers -->
         <div class="panel">
-          <h2 class="panel-title">Stepper Drivers</h2>
+          <h2 class="panel-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg> Stepper Drivers</h2>
           <div class="form-group">
             <label for="cfg-driver-type">Driver Type</label>
             <select id="cfg-driver-type">
@@ -410,7 +406,7 @@
 
         <!-- Machine Limits -->
         <div class="panel">
-          <h2 class="panel-title">Limits & Steps</h2>
+          <h2 class="panel-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg> Limits & Steps</h2>
           <div class="input-row">
             <div class="form-group">
               <label for="cfg-steps-x">X Steps/mm</label>
@@ -445,7 +441,7 @@
 
         <!-- Firmware Flash Controls (Merged from Flash Tab) -->
         <div class="panel" style="margin-top: 12px; border-color: var(--accent-primary);">
-          <h2 class="panel-title" style="color: var(--accent-primary);">⚡ Flash Firmware</h2>
+          <h2 class="panel-title" style="color: var(--accent-primary);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> Flash Firmware</h2>
           <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px 0;">Automatically installs libraries, compiles, and flashes your custom configuration to the board.</p>
 
           <div class="form-group">

@@ -6,11 +6,11 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const REPO_OWNER = 'OpenWonderWorks';
 
 const REPO_NAME = 'OpenPlotter';
-const TAG_NAME = 'v3.2.2';
-const RELEASE_NAME = 'OpenPlotter v3.2.2: Float Literal Fix';
-const BODY = 'This release fixes a firmware compilation error (`unable to find numeric literal operator \'operator""f\'`) that occurred when dynamically injecting configuration numbers without a decimal point into the C++ source code.';
-const ASSET_PATH = path.join(__dirname, 'app', 'dist-desktop', 'OpenPlotter 3.2.2.exe');
-const ASSET_NAME = 'OpenPlotter-3.2.2-Setup.exe';
+const TAG_NAME = 'v3.2.3';
+const RELEASE_NAME = 'OpenPlotter v3.2.3: UI Design Overhaul';
+const BODY = 'This release features a complete overhaul of the application UI. The previous AI-generated aesthetic (glowing orbs, emojis, excessive glassmorphism, gradients) has been removed in favor of a sleek, professional native dark mode interface similar to VSCode and GitHub.';
+const ASSET_PATH = path.join(__dirname, 'app', 'dist-desktop', 'OpenPlotter 3.2.3.exe');
+const ASSET_NAME = 'OpenPlotter-3.2.3-Setup.exe';
 
 function apiRequest(method, endpoint, body, isUpload = false) {
   return new Promise((resolve, reject) => {
