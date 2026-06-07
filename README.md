@@ -1,73 +1,55 @@
-# OpenPlotter — Open-Source Cricut-Style Cutting Plotter System
+# OpenPlotter — Open-Source Precision Cutting Plotter System
 
-OpenPlotter is a production-grade, open-source cutting plotter platform. It provides high-performance C++ firmware that runs across multiple microcontroller architectures (including Arduino Mega 2560, Arduino Nano, ESP32, and Mega/Nano+ESP32 hybrid boards) and a sleek, premium web companion application for design, manual jogging, calibration, and real-time cutting control.
+![OpenPlotter Hero](docs/images/openplotter_hero.png)
+
+OpenPlotter is a production-grade, open-source cutting plotter platform. It provides high-performance C++ firmware that runs across multiple microcontroller architectures (Arduino Mega 2560, Arduino Nano, ESP32) and a sleek, native Web/Desktop Companion application for design, manual jogging, calibration, and real-time cutting control.
 
 ---
 
-## Repository Structure
+## Documentation
 
-```text
-OpenPlotter/
-├── firmware/                       # PlatformIO Embedded project
-│   ├── include/
-│   │   └── config.h                # Master configuration file
-│   ├── src/
-│   │   ├── main.cpp                # Core event loop & initialization
-│   │   ├── hal/                    # Hardware Abstraction Layer & Pin maps
-│   │   ├── gcode/                  # G-code command lexer & parser
-│   │   ├── motion/                 # Look-ahead planner & stepper interrupts
-│   │   ├── homing/                 # Homing (switch-based & StallGuard)
-│   │   ├── tools/                  # Tool drivers (Pen servo, Solenoid blade)
-│   │   └── comms/                  # Serial, WebSocket, & Bluetooth comms
-│   └── docs/                       # Complete guide & documentation
-│       ├── WIRING_GUIDE.md         # Full schematics (Mega+RAMPS+ESP32)
-│       ├── SETUP_GUIDE.md          # Step-by-step assembly & calibration
-│       ├── GCODE_REFERENCE.md      # Command reference index
-│       └── TROUBLESHOOTING.md      # Common issues & fixes
-└── app/                            # Web Companion App (Vite + Vanilla JS)
-    ├── index.html                  # HTML5 Canvas design layout
-    ├── src/
-    │   ├── main.js                 # UI binds & coordinator
-    │   ├── style.css               # Design system & styles
-    │   └── lib/                    # Web Serial, WebSocket, & SVG parsers
-```
+The documentation has been completely overhauled and split into dedicated guides:
+
+- **[Setup Guide](docs/SETUP_GUIDE.md)**: Instructions for installing the Companion App and flashing the firmware.
+- **[Wiring Guide](docs/WIRING_GUIDE.md)**: Hardware wiring schematics and instructions for RAMPS 1.4 and CNC Shield V3.
+- **[G-Code Reference](docs/GCODE_REFERENCE.md)**: Comprehensive list of supported G-codes, M-codes, and System Commands.
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)**: Common issues, alarm locks, and compilation errors.
 
 ---
 
 ## Features
 
-### 1. Robust Multi-Platform Firmware
-*   **Hardware Abstraction Layer (HAL)**: Uniform codebase compiling natively for AVR ATmega (Mega/Nano) and ESP32.
-*   **Trapezoidal Look-Ahead Planner**: Look-ahead junction speed deviation calculations to allow smooth, high-speed cornering without full stops.
-*   **Timer-Interrupt Stepper Engine**: High-frequency, jitter-free stepper pulse timing utilizing hardware timers.
-*   **Dual Homing Modes**:
-    *   **Sensored Homing**: Mechanical endstops (Normally Closed / Normally Open).
-    *   **Sensorless Homing**: Integrated TMC2209 StallGuard torque sensor monitoring for crash-less, switch-free homing.
-*   **Modular Tools**: Built-in support for servo-controlled pens (pen plotters), solenoid-actuated drag knives, and tangential rotating knives.
+### 1. High-Performance Companion App
+- **Clean Native Theme**: A sleek, professional dark mode interface inspired by VSCode and GitHub, delivering premium performance and aesthetics.
+- **Flash Orchestrator**: Automatically downloads required Arduino libraries, compiles the C++ firmware, and flashes it directly to your board using `arduino-cli`—all from within the UI.
+- **SVG Path Importer & Optimizer**: Automatic curve linearization (Bézier curves to polylines), scaling, centering, and canvas previews.
+- **Interactive Design Bed Canvas**: Interactive pan, zoom, scale, and offset controls showing real-time machine crosshair tracking.
+- **Live Console & Log Panel**: A dedicated terminal for direct G-code entry and advanced system monitoring.
 
-### 2. High-Performance Web Companion App
-*   **Clean Glassmorphism Theme**: Premium neon styling featuring dynamic visual state feedback.
-*   **SVG Path Importer & Optimizer**: Automatic curve linearization (Bézier curves to polylines), scaling, centering, and canvas previews.
-*   **Unified Interface**: Same controls work transparently over USB Web Serial (Chrome/Edge/Opera) or WebSocket (WiFi-connected ESP32 setups).
-*   **Interactive Design Bed Canvas**: Interactive pan, zoom, scale, and offset controls showing real-time machine crosshair tracking.
-*   **Live Console & Settings Inspector**: Terminal for direct G-code entry and visual form editor to modify machine settings (`$$`) directly inside the UI.
+### 2. Robust Multi-Platform Firmware
+- **Hardware Abstraction Layer (HAL)**: Uniform codebase compiling natively for AVR ATmega (Mega/Nano) and ESP32 architectures.
+- **Trapezoidal Look-Ahead Planner**: Advanced trajectory calculations to allow smooth, high-speed cornering without full stops.
+- **Timer-Interrupt Stepper Engine**: High-frequency, jitter-free stepper pulse timing utilizing hardware timers.
+- **Dual Homing Modes**:
+    - **Sensored Homing**: Mechanical endstops (Normally Closed / Normally Open).
+    - **Sensorless Homing**: Integrated TMC2209 StallGuard torque sensor monitoring for crash-less, switch-free homing.
+- **Modular Tools**: Built-in support for servo-controlled pens (pen plotters), solenoid-actuated drag knives, and tangential rotating knives.
 
 ---
 
 ## Quick Start
 
-### 1. Compile and Flash the Firmware
-1. Open the `/firmware` directory in **VS Code** with the **PlatformIO IDE** extension installed.
-2. Open `/firmware/include/config.h` and edit settings to match your board.
-3. Select your build profile in PlatformIO (e.g., `mega_ramps14`) and click **Build**, then **Upload**.
-4. Refer to the [SETUP_GUIDE.md](file:///i:/OpenPlotter/firmware/docs/SETUP_GUIDE.md) and [WIRING_GUIDE.md](file:///i:/OpenPlotter/firmware/docs/WIRING_GUIDE.md) for detailed schematics.
+See the [Setup Guide](docs/SETUP_GUIDE.md) for full instructions.
 
-### 2. Run the Companion Web App
-1. Make sure [Node.js](https://nodejs.org/) is installed.
-2. Open a terminal in `/app` and run:
-   ```bash
-   npm install
-   npm run dev
-   ```
-3. Open `http://localhost:5173` in your browser (Google Chrome or Microsoft Edge required for Web Serial).
-4. Click **Connect Machine** to begin.
+### 1. Run the Companion App
+
+Make sure [Node.js](https://nodejs.org/) is installed, then open a terminal in the `app/` folder:
+```bash
+npm install
+npm run electron:start
+```
+
+### 2. Configure and Flash
+1. Connect your board via USB.
+2. In the App, configure your machine dimensions and drivers under the **Plotter Config** tab.
+3. Scroll down to the **Flash Firmware** section, select your COM port, and click **Compile & Flash**.
