@@ -1401,7 +1401,8 @@ function setupFirmwareFlasher() {
       try {
         const result = await window.electronAPI.installToolchain();
         logManager.flash(`Toolchain install: ${result}`);
-        showToast(result, 'success');
+        showToast(result + ' Reloading...', 'success');
+        setTimeout(() => window.location.reload(), 1500);
       } catch (err) {
         logManager.error('Toolchain install failed', err);
         showToast(`Install failed: ${err}`, 'error');
@@ -1514,7 +1515,15 @@ function setupFirmwareFlasher() {
       }
 
       try {
-        const result = await window.electronAPI.flashFirmware(boardType, fileSource, hexContent, comPortName);
+        let result;
+        if (fileSource === 'bundled') {
+          // If bundled, compile it on the fly with existing config since hex files might not exist
+          if (flashStatus) flashStatus.innerText = 'Compiling firmware...';
+          logManager.flash('Compiling built-in firmware from source...');
+          result = await window.electronAPI.compileAndFlash(boardType, comPortName, {});
+        } else {
+          result = await window.electronAPI.flashFirmware(boardType, fileSource, hexContent, comPortName);
+        }
         if (flashStatus) flashStatus.innerText = result;
         logManager.flash(result);
         showToast(result, 'success');
