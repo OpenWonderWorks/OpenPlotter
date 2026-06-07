@@ -37,6 +37,24 @@
       "dist/**/*",
       "electron-main.cjs",
       "electron-preload.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "../OpenPlotter/src",
+        "to": "OpenPlotter/src"
+      },
+      {
+        "from": "../OpenPlotter/openplotter_config.h",
+        "to": "OpenPlotter/openplotter_config.h"
+      },
+      {
+        "from": "../OpenPlotter/OpenPlotter.ino",
+        "to": "OpenPlotter/OpenPlotter.ino"
+      },
+      {
+        "from": "../OpenPlotter/build",
+        "to": "OpenPlotter/build"
+      }
     ]
   },
   "dependencies": {

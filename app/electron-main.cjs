@@ -9,6 +9,10 @@ const path = require('path');
 const { spawn, execSync, exec } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const util = require('util');
+const execAsync = util.promisify(exec);
+
+const getFirmwareDir = () => app.isPackaged ? path.join(process.resourcesPath, 'OpenPlotter') : path.join(__dirname, '..', 'OpenPlotter');
 
 let mainWindow;
 
@@ -278,29 +282,22 @@ ipcMain.handle('check-toolchain', async () => {
 ipcMain.handle('install-toolchain', async () => {
   const results = [];
 
-  // Ensure app data dir exists
   if (!fs.existsSync(APP_DATA_DIR)) {
     fs.mkdirSync(APP_DATA_DIR, { recursive: true });
   }
 
-  // Try to install arduino-cli (which includes avrdude)
   if (!findExecutable('arduino-cli')) {
     try {
       const isWin = process.platform === 'win32';
       if (isWin) {
-        // Use winget or direct download
         try {
-          execSync('winget install -e --id Arduino.ArduinoCLI --accept-package-agreements --accept-source-agreements', {
-            encoding: 'utf-8', timeout: 120000
-          });
+          await execAsync('winget install -e --id Arduino.ArduinoCLI --accept-package-agreements --accept-source-agreements', { timeout: 120000 });
           results.push('arduino-cli: installed via winget');
         } catch (e) {
           results.push('arduino-cli: winget install failed, please install manually from https://arduino.github.io/arduino-cli/');
         }
       } else {
-        execSync('curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh', {
-          encoding: 'utf-8', timeout: 120000
-        });
+        await execAsync('curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh', { timeout: 120000 });
         results.push('arduino-cli: installed');
       }
     } catch (e) {
@@ -314,7 +311,7 @@ ipcMain.handle('install-toolchain', async () => {
   const cliPath = findExecutable('arduino-cli');
   if (cliPath) {
     try {
-      execSync(`"${cliPath}" core install arduino:avr`, { encoding: 'utf-8', timeout: 300000 });
+      await execAsync(`"${cliPath}" core install arduino:avr`, { timeout: 300000 });
       results.push('arduino:avr core: installed');
     } catch (e) {
       results.push(`arduino:avr core: ${e.message}`);
@@ -324,11 +321,11 @@ ipcMain.handle('install-toolchain', async () => {
   // Check esptool
   if (!findExecutable('esptool') && !findExecutable('esptool.py')) {
     try {
-      execSync('pip install esptool', { encoding: 'utf-8', timeout: 120000 });
+      await execAsync('pip install esptool', { timeout: 120000 });
       results.push('esptool: installed via pip');
     } catch (e) {
       try {
-        execSync('pip3 install esptool', { encoding: 'utf-8', timeout: 120000 });
+        await execAsync('pip3 install esptool', { timeout: 120000 });
         results.push('esptool: installed via pip3');
       } catch (e2) {
         results.push('esptool: pip install failed, install Python and run: pip install esptool');
@@ -414,7 +411,7 @@ async function flashWithAvrdude(boardDef, fileSource, hexContent, port, sendProg
     fs.writeFileSync(hexFilePath, hexContent);
     sendProgress(`Custom firmware file saved to ${hexFilePath}`);
   } else {
-    hexFilePath = path.join(__dirname, '..', 'OpenPlotter', 'build', `${boardDef.mcu}.hex`);
+    hexFilePath = path.join(getFirmwareDir(), 'build', `${boardDef.mcu}.hex`);
     if (!fs.existsSync(hexFilePath)) {
       throw new Error(`Built-in firmware not found at ${hexFilePath}. Use "Apply Config & Flash" to compile from source.`);
     }
@@ -481,7 +478,7 @@ async function flashWithEsptool(boardDef, fileSource, hexContent, port, sendProg
     binFilePath = path.join(APP_DATA_DIR, 'custom_firmware.bin');
     fs.writeFileSync(binFilePath, hexContent);
   } else {
-    binFilePath = path.join(__dirname, '..', 'OpenPlotter', 'build', 'esp32_firmware.bin');
+    binFilePath = path.join(getFirmwareDir(), 'build', 'esp32_firmware.bin');
     if (!fs.existsSync(binFilePath)) {
       throw new Error('Built-in ESP32 firmware not found. Compile from source first.');
     }
@@ -542,7 +539,7 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
   sendProgress(`═══════════════════════════════════════`);
 
   // Step 1: Modify openplotter_config.h with the user's settings
-  const configPath = path.join(__dirname, '..', 'OpenPlotter', 'openplotter_config.h');
+  const configPath = path.join(getFirmwareDir(), 'openplotter_config.h');
   let originalConfig = '';
 
   if (fs.existsSync(configPath)) {
@@ -601,7 +598,7 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
 
   try {
     // Step 2: Compile using arduino-cli
-    const sketchPath = path.join(__dirname, '..', 'OpenPlotter');
+    const sketchPath = getFirmwareDir();
     const compileArgs = [
       'compile',
       '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
