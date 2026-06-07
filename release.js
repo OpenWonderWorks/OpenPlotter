@@ -6,11 +6,11 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const REPO_OWNER = 'OpenWonderWorks';
 
 const REPO_NAME = 'OpenPlotter';
-const TAG_NAME = 'v3.2.1';
-const RELEASE_NAME = 'OpenPlotter v3.2.1: Flash Hotfix';
-const BODY = 'This hotfix addresses a critical issue where the application would completely freeze or crash during firmware flashing. The crash was caused by the `arduino-cli --verbose` flag dumping thousands of lines of C++ compilation logs into the UI thread at once, causing a total lockup of the orchestrator.';
-const ASSET_PATH = path.join(__dirname, 'app', 'dist-desktop', 'OpenPlotter 3.2.1.exe');
-const ASSET_NAME = 'OpenPlotter-3.2.1-Setup.exe';
+const TAG_NAME = 'v3.2.2';
+const RELEASE_NAME = 'OpenPlotter v3.2.2: Float Literal Fix';
+const BODY = 'This release fixes a firmware compilation error (`unable to find numeric literal operator \'operator""f\'`) that occurred when dynamically injecting configuration numbers without a decimal point into the C++ source code.';
+const ASSET_PATH = path.join(__dirname, 'app', 'dist-desktop', 'OpenPlotter 3.2.2.exe');
+const ASSET_NAME = 'OpenPlotter-3.2.2-Setup.exe';
 
 function apiRequest(method, endpoint, body, isUpload = false) {
   return new Promise((resolve, reject) => {

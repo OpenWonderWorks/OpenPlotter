@@ -603,7 +603,9 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
 
     Object.entries(settingsMap).forEach(([key, [define, suffix]]) => {
       if (config[key]) {
-        const val = config[key] + (suffix ? suffix : '');
+        let numStr = config[key].toString();
+        if (suffix === 'f' && !numStr.includes('.')) numStr += '.0';
+        const val = numStr + (suffix ? suffix : '');
         const regex = new RegExp(`#define ${define}\\s+[\\d\\.]+[f]?`, 'g');
         modified = modified.replace(regex, `#define ${define}${' '.repeat(Math.max(1, 24 - define.length))}${val}`);
       }
