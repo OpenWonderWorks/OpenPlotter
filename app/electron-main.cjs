@@ -19,7 +19,7 @@ function createWindow() {
     title: 'OpenPlotter',
     icon: path.join(__dirname, 'public', 'favicon.svg'),
     webPreferences: {
-      preload: path.join(__dirname, 'electron-preload.js'),
+      preload: path.join(__dirname, 'electron-preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
@@ -35,6 +35,31 @@ function createWindow() {
     // Production
     mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
+
+  // Handle Web Serial API select-serial-port
+  mainWindow.webContents.session.on('select-serial-port', (event, portList, webContents, callback) => {
+    event.preventDefault();
+    if (global.targetSerialPort) {
+      const selectedPort = portList.find(port => port.portName === global.targetSerialPort || port.path === global.targetSerialPort);
+      if (selectedPort) {
+        callback(selectedPort.portId);
+      } else {
+        callback(''); // Port not found in list
+      }
+    } else {
+      callback(''); // Cancel
+    }
+  });
+
+  // Grant serial permissions automatically
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'serial') return true;
+    return false;
+  });
+  mainWindow.webContents.session.setDevicePermissionHandler((details) => {
+    if (details.deviceType === 'serial') return true;
+    return false;
+  });
 }
 
 app.whenReady().then(createWindow);
@@ -341,6 +366,7 @@ ipcMain.handle('detect-boards', async () => {
 // Set target serial port for Web Serial
 ipcMain.on('set-target-serial-port', (event, portName) => {
   console.log(`Target serial port set: ${portName}`);
+  global.targetSerialPort = portName;
   event.returnValue = true;
 });
 
