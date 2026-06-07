@@ -1,6 +1,7 @@
 /**
- * OpenPlotter — Web Serial Manager
- * Manages USB Serial connectivity and handles queued G-code sending with flow control.
+ * OpenPlotter — Web Serial Manager v3.1.0
+ * Manages USB Serial connectivity with retry logic, improved error messages,
+ * and handles queued G-code sending with flow control.
  */
 
 export class SerialManager {
@@ -32,6 +33,11 @@ export class SerialManager {
     
     // Connection guard
     this._connecting = false;
+    this._disconnecting = false;
+    
+    // Retry settings
+    this.maxRetries = 3;
+    this.retryDelay = 1000; // ms, doubles each retry
   }
 
   isSupported() {
@@ -49,32 +55,74 @@ export class SerialManager {
     }
     
     this._connecting = true;
+    let lastError = null;
     
-    try {
-      // In an Electron context, we can tell the backend which port to pick (synchronous)
-      if (portPath && window.electronAPI && window.electronAPI.setTargetSerialPort) {
-         window.electronAPI.setTargetSerialPort(portPath);
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        // In an Electron context, we can tell the backend which port to pick (synchronous)
+        if (portPath && window.electronAPI && window.electronAPI.setTargetSerialPort) {
+           window.electronAPI.setTargetSerialPort(portPath);
+        }
+        
+        if (attempt > 0) {
+          const delay = this.retryDelay * Math.pow(2, attempt - 1);
+          console.log(`Serial retry ${attempt}/${this.maxRetries} in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+        }
+        
+        this.port = await navigator.serial.requestPort();
+        await this.port.open({ baudRate });
+        this.connected = true;
+        this.baudRate = baudRate;
+        
+        this.writer = this.port.writable.getWriter();
+        this.readPromise = this.startReading();
+        this.startStatusPolling();
+        
+        this._connecting = false;
+        this.onConnect();
+        return true;
+      } catch (err) {
+        lastError = err;
+        console.error(`Connect attempt ${attempt + 1} failed:`, err);
+        
+        // Clean up partial connection
+        try { if (this.writer) { this.writer.releaseLock(); this.writer = null; } } catch(e) {}
+        try { if (this.port) { await this.port.close(); this.port = null; } } catch(e) {}
+        
+        // Don't retry on user cancellation
+        if (err.name === 'NotFoundError') {
+          break; // User cancelled port selection
+        }
       }
-      
-      this.port = await navigator.serial.requestPort();
-      await this.port.open({ baudRate });
-      this.connected = true;
-      this.baudRate = baudRate;
-      
-      this.writer = this.port.writable.getWriter();
-      this.readPromise = this.startReading();
-      this.startStatusPolling();
-      
-      this.onConnect();
-      return true;
-    } catch (err) {
-      console.error('Failed to connect:', err);
-      this._surfaceError('Connection failed', err);
-      this.disconnect();
-      throw err;
-    } finally {
-      this._connecting = false;
     }
+    
+    this._connecting = false;
+    this.connected = false;
+    
+    // Provide user-friendly error messages
+    const friendlyErr = this._friendlyError(lastError);
+    this._surfaceError('Connection failed', friendlyErr);
+    throw friendlyErr;
+  }
+  
+  _friendlyError(err) {
+    if (!err) return new Error('Unknown connection error');
+    const msg = err.message || String(err);
+    
+    if (msg.includes('locked') || msg.includes('busy') || msg.includes('Access denied')) {
+      return new Error('Serial port is busy — close any other programs using it (Arduino IDE, PuTTY, etc.)');
+    }
+    if (err.name === 'NotFoundError') {
+      return new Error('No serial port selected. Please choose a port from the dialog.');
+    }
+    if (msg.includes('Permission denied')) {
+      return new Error('Permission denied. On Linux, add your user to the "dialout" group.');
+    }
+    if (msg.includes('NetworkError')) {
+      return new Error('Serial port disconnected unexpectedly. Check the USB cable.');
+    }
+    return err;
   }
 
   async disconnect() {

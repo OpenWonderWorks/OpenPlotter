@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="OpenPlotter — Open-source cutting plotter companion app for SVG import, G-code generation, and real-time machine control over USB or WiFi." />
-    <meta name="theme-color" content="#05050a" />
-    <title>OpenPlotter — Cutting Plotter Companion</title>
+    <meta name="description" content="OpenPlotter — Open-source cutting plotter & pen plotter companion app for SVG/PNG import, G-code generation, and real-time machine control over USB or WiFi." />
+    <meta name="theme-color" content="#0b0d12" />
+    <title>OpenPlotter — Plotter Companion</title>
   </head>
   <body>
   <div class="bg-orbs">
@@ -16,495 +16,590 @@
   </div>
 
   <div class="app-layout">
-    <!-- Header -->
+    <!-- ═══════════ Header ═══════════ -->
     <header class="app-header glass-panel">
       <div class="brand">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-cyan);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-primary);">
           <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path>
           <path d="M12 8v4l3 3"></path>
         </svg>
         <h1>OpenPlotter</h1>
-        <span class="brand-badge">v3.0.2</span>
+        <span class="brand-badge">v3.1.0</span>
       </div>
       <div class="connection-bar">
         <div id="status-badge" class="status-indicator status-DISCONNECTED">Disconnected</div>
         <button id="btn-show-connect" class="btn btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a6 6 0 0 0 0-12z"></path></svg>
-          Connect Machine
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a6 6 0 0 0 0-12z"></path></svg>
+          Connect
         </button>
         <button id="btn-disconnect" class="btn btn-danger" style="display: none;">Disconnect</button>
       </div>
     </header>
 
-      
-      <!-- Left Sidebar: SVG & Parameters -->
-      <aside class="sidebar glass-panel">
-        <!-- SVG Import -->
-        <section class="panel">
-          <h2 class="panel-title">Design Import</h2>
-          <div id="dropzone" class="dropzone">
-            <div class="dropzone-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            </div>
-            <p style="margin: 0; font-size: 0.85rem; font-weight: 500;">Drag & Drop SVG here</p>
-            <p style="margin: 4px 0 0 0; font-size: 0.75rem; color: var(--text-muted);">or click to browse</p>
-            <input type="file" id="file-input" accept=".svg" style="display: none;">
+    <!-- ═══════════ Left Sidebar: Design & Parameters ═══════════ -->
+    <aside class="sidebar glass-panel">
+      <!-- Design Import -->
+      <section class="panel">
+        <h2 class="panel-title">📁 Design Import</h2>
+        <div id="dropzone" class="dropzone">
+          <div class="dropzone-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
           </div>
-          <div id="svg-info" style="display: none; margin-top: 12px; font-size: 0.8rem; background: var(--bg-tertiary); padding: 8px; border-radius: 4px; border: 1px solid var(--border-color);">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span>Width: <strong id="svg-w">-</strong> mm</span>
-              <span>Height: <strong id="svg-h">-</strong> mm</span>
-            </div>
-            <div>Paths found: <strong id="svg-paths">-</strong></div>
-          </div>
-        </section>
+          <p style="margin: 0; font-size: 0.82rem; font-weight: 500;">Drop SVG, PNG, or JPG here</p>
+          <p style="margin: 3px 0 0 0; font-size: 0.7rem; color: var(--text-muted);">or click to browse</p>
+          <input type="file" id="file-input" accept=".svg,.png,.jpg,.jpeg" style="display: none;">
+        </div>
 
-        <!-- Layout Config -->
-        <section class="panel">
-          <h2 class="panel-title">Layout & Transforms</h2>
+        <!-- SVG Info -->
+        <div id="svg-info" style="display: none; margin-top: 10px; font-size: 0.78rem; background: var(--bg-inset); padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+            <span>Width: <strong id="svg-w">-</strong> mm</span>
+            <span>Height: <strong id="svg-h">-</strong> mm</span>
+          </div>
+          <div>Paths: <strong id="svg-paths">-</strong></div>
+        </div>
+
+        <!-- Raster Trace Settings (shown for PNG/JPG) -->
+        <div id="trace-settings" class="trace-settings" style="display: none;">
+          <h3 style="font-size: 0.75rem; margin: 0 0 8px 0; color: var(--text-secondary); font-weight: 600;">Trace Settings</h3>
           <div class="input-row">
             <div class="form-group">
-              <label for="cfg-scale">Scale Factor</label>
-              <input type="number" id="cfg-scale" value="1.0" step="0.1" min="0.1">
+              <label for="trace-threshold">Threshold</label>
+              <input type="number" id="trace-threshold" value="128" min="0" max="255" step="1">
             </div>
             <div class="form-group">
-              <label for="cfg-tolerance">Curve Tolerance</label>
-              <input type="number" id="cfg-tolerance" value="0.15" step="0.05" min="0.01">
+              <label for="trace-smoothing">Smoothing</label>
+              <input type="number" id="trace-smoothing" value="1" min="0" max="5" step="1">
             </div>
           </div>
           <div class="input-row">
             <div class="form-group">
-              <label for="cfg-offset-x">Offset X (mm)</label>
-              <input type="number" id="cfg-offset-x" value="0" step="1">
+              <label for="trace-simplify">Simplify</label>
+              <input type="number" id="trace-simplify" value="1.5" min="0.1" max="10" step="0.1">
             </div>
             <div class="form-group">
-              <label for="cfg-offset-y">Offset Y (mm)</label>
-              <input type="number" id="cfg-offset-y" value="0" step="1">
+              <label for="trace-min-length">Min Path</label>
+              <input type="number" id="trace-min-length" value="5" min="2" max="50" step="1">
             </div>
           </div>
-        </section>
-
-        <!-- Material Profiles -->
-        <section class="panel">
-          <h2 class="panel-title">Material Profiles</h2>
-          <div class="profile-cards">
-            <div class="profile-card active" data-profile="vinyl">
-              <div class="profile-name">Vinyl</div>
-              <div class="profile-stats">Press: 90 | Speed: 1500</div>
-            </div>
-            <div class="profile-card" data-profile="cardstock">
-              <div class="profile-name">Cardstock</div>
-              <div class="profile-stats">Press: 220 | Speed: 800</div>
-            </div>
-            <div class="profile-card" data-profile="paper">
-              <div class="profile-name">Paper</div>
-              <div class="profile-stats">Press: 60 | Speed: 1800</div>
-            </div>
-            <div class="profile-card" data-profile="custom">
-              <div class="profile-name">Custom</div>
-              <div class="profile-stats">Edit manually</div>
-            </div>
+          <div class="form-group" style="margin-bottom: 4px;">
+            <label><input type="checkbox" id="trace-invert" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle;"> Invert (trace white on dark)</label>
           </div>
-        </section>
+          <button id="btn-retrace" class="btn btn-full" style="margin-top: 6px;">Re-trace Image</button>
+          <canvas id="trace-preview" class="trace-preview-canvas" style="display: none;"></canvas>
+        </div>
+      </section>
 
-        <!-- Cutting Settings -->
-        <section class="panel" style="border-bottom: none;">
-          <h2 class="panel-title">Cut Parameters</h2>
+      <!-- Layout & Transforms -->
+      <section class="panel">
+        <h2 class="panel-title">📐 Layout & Transforms</h2>
+        <div class="input-row">
           <div class="form-group">
-            <label for="cfg-pressure">Blade Pressure (0-255)</label>
-            <input type="number" id="cfg-pressure" value="90" min="0" max="255">
+            <label for="cfg-scale">Scale Factor</label>
+            <input type="number" id="cfg-scale" value="1.0" step="0.1" min="0.1">
           </div>
-          <div class="input-row">
-            <div class="form-group">
-              <label for="cfg-speed-linear">Cut Speed (mm/m)</label>
-              <input type="number" id="cfg-speed-linear" value="1500" step="100">
-            </div>
-            <div class="form-group">
-              <label for="cfg-speed-rapid">Travel Speed (mm/m)</label>
-              <input type="number" id="cfg-speed-rapid" value="3000" step="100">
-            </div>
-          </div>
-          <div class="input-row">
-            <div class="form-group">
-              <label for="cfg-passes">Pass Count</label>
-              <input type="number" id="cfg-passes" value="1" min="1">
-            </div>
-            <div class="form-group">
-              <label for="cfg-updown-delays">UpDown Delay (ms)</label>
-              <input type="number" id="cfg-updown-delays" value="150" step="50">
-            </div>
-          </div>
-        </section>
-      </aside>
-
-      <!-- Center: Interactive Canvas -->
-      <main class="canvas-container glass-panel" style="flex-direction: column;">
-        <!-- Canvas Control Toolbar -->
-        <div style="padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
-          <div style="display: flex; gap: 8px;">
-            <button id="btn-canvas-fit" class="btn" title="Fit to Bed">Fit to Bed</button>
-            <button id="btn-canvas-clear" class="btn" title="Clear Design">Clear</button>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button id="btn-gen-gcode" class="btn" disabled>Generate G-code <span class="kbd-hint">Ctrl+G</span></button>
-            <button id="btn-export-gcode" class="btn" title="Download generated G-code as a file">Export .gcode</button>
-            <button id="btn-start-cut" class="btn btn-primary" disabled>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-              Start Cut
-            </button>
-            <button id="btn-pause-cut" class="btn btn-accent" style="display: none;">Pause</button>
-            <button id="btn-stop-cut" class="btn btn-danger" style="display: none;">Abort</button>
+          <div class="form-group">
+            <label for="cfg-tolerance">Curve Tolerance</label>
+            <input type="number" id="cfg-tolerance" value="0.15" step="0.05" min="0.01">
           </div>
         </div>
-        
-        <!-- Main Canvas Container -->
-        <div id="canvas-wrapper" style="flex: 1; position: relative; width: 100%; display: flex; align-items: center; justify-content: center;">
-          <canvas id="plotter-canvas" width="600" height="600"></canvas>
+        <div class="input-row">
+          <div class="form-group">
+            <label for="cfg-offset-x">Offset X (mm)</label>
+            <input type="number" id="cfg-offset-x" value="0" step="1">
+          </div>
+          <div class="form-group">
+            <label for="cfg-offset-y">Offset Y (mm)</label>
+            <input type="number" id="cfg-offset-y" value="0" step="1">
+          </div>
         </div>
+      </section>
 
-        <!-- G-code Preview Panel (collapsible) -->
-        <div id="gcode-preview-panel" class="gcode-preview-panel" style="display: none;">
-          <button id="gcode-preview-toggle" class="gcode-preview-toggle">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            G-code Preview <span id="gcode-preview-count" class="gcode-preview-count"></span>
+      <!-- Material Profiles -->
+      <section class="panel" id="panel-materials">
+        <h2 class="panel-title" id="panel-materials-title">🎨 Material Profiles</h2>
+        <div class="profile-cards">
+          <div class="profile-card active" data-profile="vinyl">
+            <div class="profile-name">Vinyl</div>
+            <div class="profile-stats">Press: 90 | Speed: 1500</div>
+          </div>
+          <div class="profile-card" data-profile="cardstock">
+            <div class="profile-name">Cardstock</div>
+            <div class="profile-stats">Press: 220 | Speed: 800</div>
+          </div>
+          <div class="profile-card" data-profile="paper">
+            <div class="profile-name">Paper</div>
+            <div class="profile-stats">Press: 60 | Speed: 1800</div>
+          </div>
+          <div class="profile-card" data-profile="custom">
+            <div class="profile-name">Custom</div>
+            <div class="profile-stats">Edit manually</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tool Parameters (labels update based on tool) -->
+      <section class="panel" style="border-bottom: none;">
+        <h2 class="panel-title" id="params-title">⚙ Parameters</h2>
+        <div class="form-group">
+          <label for="cfg-pressure" id="label-pressure">Pressure (0-255)</label>
+          <input type="number" id="cfg-pressure" value="90" min="0" max="255">
+        </div>
+        <div class="input-row">
+          <div class="form-group">
+            <label for="cfg-speed-linear" id="label-speed">Speed (mm/min)</label>
+            <input type="number" id="cfg-speed-linear" value="1500" step="100">
+          </div>
+          <div class="form-group">
+            <label for="cfg-speed-rapid">Travel Speed</label>
+            <input type="number" id="cfg-speed-rapid" value="3000" step="100">
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="form-group">
+            <label for="cfg-passes">Pass Count</label>
+            <input type="number" id="cfg-passes" value="1" min="1">
+          </div>
+          <div class="form-group">
+            <label for="cfg-updown-delays">Up/Down Delay (ms)</label>
+            <input type="number" id="cfg-updown-delays" value="150" step="50">
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- ═══════════ Center: Canvas ═══════════ -->
+    <main class="canvas-container glass-panel" style="flex-direction: column;">
+      <!-- Canvas Toolbar -->
+      <div class="canvas-toolbar">
+        <div style="display: flex; gap: 6px;">
+          <button id="btn-canvas-fit" class="btn" title="Fit to Bed">Fit</button>
+          <button id="btn-canvas-clear" class="btn" title="Clear Design">Clear</button>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button id="btn-gen-gcode" class="btn" disabled>
+            <span id="label-gen-gcode">Generate G-code</span> <span class="kbd-hint">Ctrl+G</span>
           </button>
-          <pre id="gcode-preview-content" class="gcode-preview-content"></pre>
+          <button id="btn-export-gcode" class="btn" title="Download .gcode file">Export</button>
+          <button id="btn-start-cut" class="btn btn-primary" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span id="label-start">Start</span>
+          </button>
+          <button id="btn-pause-cut" class="btn btn-accent" style="display: none;">Pause</button>
+          <button id="btn-stop-cut" class="btn btn-danger" style="display: none;">Abort</button>
         </div>
-      </main>
+      </div>
 
-      <!-- Right Sidebar: Jog, Console, Settings Tabs -->
-      <aside class="sidebar glass-panel" style="grid-area: sidebar-right;">
-        <!-- Tabs headers -->
-        <div class="tab-headers">
-          <div class="tab-header active" data-tab="tab-control">Control</div>
-          <div class="tab-header" data-tab="tab-console">Console</div>
-          <div class="tab-header" data-tab="tab-settings">Settings</div>
-          <div class="tab-header" data-tab="tab-plotter">Plotter Config</div>
-          <div class="tab-header" data-tab="tab-firmware">Firmware</div>
+      <!-- Canvas -->
+      <div id="canvas-wrapper" style="flex: 1; position: relative; width: 100%; display: flex; align-items: center; justify-content: center;">
+        <canvas id="plotter-canvas" width="600" height="600"></canvas>
+      </div>
+
+      <!-- G-code Preview Panel -->
+      <div id="gcode-preview-panel" class="gcode-preview-panel" style="display: none;">
+        <button id="gcode-preview-toggle" class="gcode-preview-toggle">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          G-code Preview <span id="gcode-preview-count" class="gcode-preview-count"></span>
+        </button>
+        <pre id="gcode-preview-content" class="gcode-preview-content"></pre>
+      </div>
+    </main>
+
+    <!-- ═══════════ Right Sidebar: Control / Console / Config / Firmware ═══════════ -->
+    <aside class="sidebar glass-panel" style="grid-area: sidebar-right;">
+      <!-- Tab Headers -->
+      <div class="tab-headers">
+        <div class="tab-header active" data-tab="tab-control">Control</div>
+        <div class="tab-header" data-tab="tab-console">Console</div>
+        <div class="tab-header" data-tab="tab-settings">Settings</div>
+        <div class="tab-header" data-tab="tab-plotter">Config</div>
+        <div class="tab-header" data-tab="tab-firmware">Flash</div>
+      </div>
+
+      <!-- ── Tab 1: Control ── -->
+      <div class="tab-content active" id="tab-control">
+        <!-- Safety -->
+        <div class="panel">
+          <h2 class="panel-title">🛑 Safety</h2>
+          <div class="input-row">
+            <button id="btn-estop" class="btn btn-danger btn-full">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+              E-STOP <span class="kbd-hint">Esc</span>
+            </button>
+            <button id="btn-unlock" class="btn btn-accent btn-full">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+              Unlock
+            </button>
+          </div>
         </div>
 
-        <!-- Tab 1: Manual Control & Status -->
-        <div class="tab-content active" id="tab-control">
-          <!-- Safety Block -->
-          <div class="panel">
-            <h2 class="panel-title">Safety & Alarms</h2>
-            <div class="input-row">
-              <button id="btn-estop" class="btn btn-danger btn-full">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
-                EMERGENCY STOP <span class="kbd-hint">Esc</span>
-              </button>
-              <button id="btn-unlock" class="btn btn-accent btn-full">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
-                UNLOCK ($X)
-              </button>
+        <!-- Jog -->
+        <div class="panel">
+          <h2 class="panel-title">🕹 Jogging</h2>
+          <div style="display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 6px 0;">
+            <div class="jog-grid">
+              <div></div>
+              <button id="jog-y-plus" class="btn" title="Y+">▲</button>
+              <div></div>
+              <button id="jog-x-minus" class="btn" title="X-">◀</button>
+              <button id="btn-home" class="btn btn-primary" title="Home ($H) — Ctrl+H">⌂</button>
+              <button id="jog-x-plus" class="btn" title="X+">▶</button>
+              <div></div>
+              <button id="jog-y-minus" class="btn" title="Y-">▼</button>
+              <div></div>
             </div>
-          </div>
-
-          <!-- Jog Grid -->
-          <div class="panel">
-            <h2 class="panel-title">Manual Jogging</h2>
-            <div style="display: flex; flex-direction: column; gap: 16px; align-items: center; padding: 10px 0;">
-              <div class="jog-grid">
-                <div></div>
-                <button id="jog-y-plus" class="btn" title="Y+">▲</button>
-                <div></div>
-                <button id="jog-x-minus" class="btn" title="X-">◀</button>
-                <button id="btn-home" class="btn btn-primary" title="Home All ($H) — Ctrl+H">H</button>
-                <button id="jog-x-plus" class="btn" title="X+">▶</button>
-                <div></div>
-                <button id="jog-y-minus" class="btn" title="Y-">▼</button>
-                <div></div>
-              </div>
-              
-              <div class="form-group" style="width: 100%; max-width: 200px;">
-                <label for="cfg-jog-step" style="text-align: center;">Step Distance (mm)</label>
-                <select id="cfg-jog-step">
-                  <option value="0.1">0.1 mm</option>
-                  <option value="1" selected>1 mm</option>
-                  <option value="10">10 mm</option>
-                  <option value="50">50 mm</option>
-                </select>
-              </div>
-            </div>
-            
-            <div class="input-row" style="margin-top: 8px;">
-              <button id="btn-zero-xy" class="btn btn-full">Zero X/Y (G92)</button>
-              <button id="btn-tool-test" class="btn btn-full">Test Tool (M3/M5)</button>
-            </div>
-          </div>
-
-          <!-- Quick Utilities -->
-          <div class="panel">
-            <h2 class="panel-title">Utility Commands</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <button id="btn-cmd-status" class="btn btn-full">Check Status (?)</button>
-              <button id="btn-cmd-endstops" class="btn btn-full">Endstops (M119)</button>
-              <button id="btn-cmd-help" class="btn btn-full">Help (M100)</button>
-              <button id="btn-cmd-motors-off" class="btn btn-full">Motors Off (M18)</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tab 2: Raw Console Terminal -->
-        <div class="tab-content" id="tab-console" style="padding: 16px;">
-          <div class="terminal" id="terminal-log">
-            <div class="terminal-line terminal-info">Welcome to OpenPlotter Console.</div>
-            <div class="terminal-line terminal-info">Connect to a machine to start communicating.</div>
-          </div>
-          <div class="terminal-input-container">
-            <input type="text" id="terminal-input" placeholder="Type G-code (e.g. G0 X10)..." disabled>
-            <button id="btn-terminal-send" class="btn" disabled>Send</button>
-          </div>
-          <button id="btn-terminal-clear" class="btn btn-full" style="margin-top: 8px;">Clear Console</button>
-        </div>
-
-        <!-- Tab 3: Firmware Settings Editor ($) -->
-        <div class="tab-content" id="tab-settings" style="padding: 16px;">
-          <div id="settings-loading" style="text-align: center; color: var(--text-secondary); padding: 20px;">
-            Connect to machine and click "Load Settings" to fetch active $$ values.
-            <button id="btn-settings-load" class="btn btn-primary" style="margin-top: 12px;" disabled>Load Settings</button>
-          </div>
-          <div id="settings-list" style="display: none; flex: 1; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 4px;">
-            <!-- Settings inputs are dynamically generated here -->
-          </div>
-          <div id="settings-actions" style="display: none; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px; gap: 8px; grid-template-columns: 1fr 1fr;">
-            <button id="btn-settings-save" class="btn btn-primary">Save to EEPROM</button>
-            <button id="btn-settings-reset" class="btn btn-danger">Factory Reset</button>
-          </div>
-        </div>
-
-        <!-- Tab 3.5: Plotter App Configuration -->
-        <div class="tab-content" id="tab-plotter" style="padding: 16px;">
-          <div class="panel">
-            <h2 class="panel-title">Machine Kinematics</h2>
-            <div class="form-group">
-              <label for="cfg-kinematics">Motion System</label>
-              <select id="cfg-kinematics">
-                <option value="cartesian">Cartesian (Standard XY)</option>
-                <option value="rollers">Rollers / CoreXY (Friction Feed)</option>
+            <div class="form-group" style="width: 100%; max-width: 180px;">
+              <label for="cfg-jog-step" style="text-align: center;">Step (mm)</label>
+              <select id="cfg-jog-step">
+                <option value="0.1">0.1 mm</option>
+                <option value="1" selected>1 mm</option>
+                <option value="10">10 mm</option>
+                <option value="50">50 mm</option>
               </select>
             </div>
-            <div class="form-group">
-              <label for="cfg-heads">Number of Tool Heads</label>
-              <select id="cfg-heads">
-                <option value="1">1 Head</option>
-                <option value="2">2 Heads</option>
-              </select>
-            </div>
-            
-            <div id="head2-offsets" style="display: none; border-left: 2px solid var(--accent-cyan); padding-left: 10px; margin-top: 10px;">
-              <label style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; display: block;">Head 2 Offset (relative to Head 1)</label>
-              <div class="input-row">
-                <div class="form-group">
-                  <label for="cfg-head2-x">X Offset (mm)</label>
-                  <input type="number" id="cfg-head2-x" value="20" step="1">
-                </div>
-                <div class="form-group">
-                  <label for="cfg-head2-y">Y Offset (mm)</label>
-                  <input type="number" id="cfg-head2-y" value="0" step="1">
-                </div>
-              </div>
-            </div>
-            </div>
           </div>
-          
-          <div class="panel">
-            <h2 class="panel-title">Stepper Drivers & Motors</h2>
-            <div class="form-group">
-              <label for="cfg-driver-type">Driver Type</label>
-              <select id="cfg-driver-type">
-                <option value="a4988">A4988 / DRV8825 (Standalone)</option>
-                <option value="tmc2208">TMC2208 (UART)</option>
-                <option value="tmc2209" selected>TMC2209 (UART)</option>
-              </select>
-            </div>
-            <div class="form-group" id="group-motor-current">
-              <label for="cfg-motor-current">Motor Current (mA) - TMC Only</label>
-              <input type="number" id="cfg-motor-current" value="800" step="50" min="200" max="2000">
-            </div>
-            
+          <div class="input-row" style="margin-top: 6px;">
+            <button id="btn-zero-xy" class="btn btn-full">Zero X/Y</button>
+            <button id="btn-tool-test" class="btn btn-full" id="btn-tool-test"><span id="label-tool-test">Test Tool</span></button>
+          </div>
+        </div>
+
+        <!-- Utilities -->
+        <div class="panel" style="border-bottom: none;">
+          <h2 class="panel-title">🔧 Utilities</h2>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <button id="btn-cmd-status" class="btn btn-full">Status (?)</button>
+            <button id="btn-cmd-endstops" class="btn btn-full">Endstops</button>
+            <button id="btn-cmd-help" class="btn btn-full">Help</button>
+            <button id="btn-cmd-motors-off" class="btn btn-full">Motors Off</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Tab 2: Console ── -->
+      <div class="tab-content" id="tab-console" style="padding: 14px;">
+        <div class="terminal" id="terminal-log">
+          <div class="terminal-line terminal-info">Welcome to OpenPlotter Console.</div>
+          <div class="terminal-line terminal-info">Connect to a machine to begin.</div>
+        </div>
+        <div class="terminal-input-container">
+          <input type="text" id="terminal-input" placeholder="Type G-code..." disabled>
+          <button id="btn-terminal-send" class="btn" disabled>Send</button>
+        </div>
+        <button id="btn-terminal-clear" class="btn btn-full" style="margin-top: 6px;">Clear</button>
+      </div>
+
+      <!-- ── Tab 3: Firmware Settings ── -->
+      <div class="tab-content" id="tab-settings" style="padding: 14px;">
+        <div id="settings-loading" style="text-align: center; color: var(--text-secondary); padding: 16px; font-size: 0.85rem;">
+          Connect and click "Load Settings" to fetch $$ values.
+          <button id="btn-settings-load" class="btn btn-primary" style="margin-top: 10px;" disabled>Load Settings</button>
+        </div>
+        <div id="settings-list" style="display: none; flex: 1; flex-direction: column; gap: 10px; overflow-y: auto; padding-right: 4px;"></div>
+        <div id="settings-actions" style="display: none; border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: 10px; gap: 6px; display: none; grid-template-columns: 1fr 1fr;">
+          <button id="btn-settings-save" class="btn btn-primary">Save to EEPROM</button>
+          <button id="btn-settings-reset" class="btn btn-danger">Factory Reset</button>
+        </div>
+      </div>
+
+      <!-- ── Tab 4: Plotter Config ── -->
+      <div class="tab-content" id="tab-plotter" style="padding: 14px;">
+        <!-- Kinematics -->
+        <div class="panel">
+          <h2 class="panel-title">Machine Setup</h2>
+          <div class="form-group">
+            <label for="cfg-kinematics">Motion System</label>
+            <select id="cfg-kinematics">
+              <option value="cartesian">Cartesian (Standard XY)</option>
+              <option value="rollers">Rollers / CoreXY</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cfg-heads">Number of Tool Heads</label>
+            <select id="cfg-heads">
+              <option value="1">1 Head</option>
+              <option value="2">2 Heads</option>
+            </select>
+          </div>
+
+          <!-- Head 2 Offsets -->
+          <div id="head2-offsets" style="display: none; border-left: 2px solid var(--accent-primary); padding-left: 10px; margin-top: 8px;">
+            <label style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; display: block;">Head 2 Offset (relative to Head 1)</label>
             <div class="input-row">
               <div class="form-group">
-                <label for="cfg-invert-x">Invert X Axis</label>
-                <input type="checkbox" id="cfg-invert-x" style="width: 16px; height: 16px;">
+                <label for="cfg-head2-x">X Offset (mm)</label>
+                <input type="number" id="cfg-head2-x" value="20" step="1">
               </div>
               <div class="form-group">
-                <label for="cfg-invert-y">Invert Y Axis</label>
-                <input type="checkbox" id="cfg-invert-y" style="width: 16px; height: 16px;">
+                <label for="cfg-head2-y">Y Offset (mm)</label>
+                <input type="number" id="cfg-head2-y" value="0" step="1">
               </div>
             </div>
-          </div>
-
-          <div class="panel">
-            <h2 class="panel-title">Machine Limits & Steps</h2>
-            <div class="input-row">
-              <div class="form-group">
-                <label for="cfg-steps-x">X Steps/mm</label>
-                <input type="number" id="cfg-steps-x" value="80" step="0.1">
-              </div>
-              <div class="form-group">
-                <label for="cfg-steps-y">Y Steps/mm</label>
-                <input type="number" id="cfg-steps-y" value="80" step="0.1">
-              </div>
-            </div>
-            <div class="input-row">
-              <div class="form-group">
-                <label for="cfg-max-speed">Max Speed (mm/min)</label>
-                <input type="number" id="cfg-max-speed" value="5000" step="100">
-              </div>
-              <div class="form-group">
-                <label for="cfg-max-accel">Acceleration (mm/s²)</label>
-                <input type="number" id="cfg-max-accel" value="500" step="10">
-              </div>
-            </div>
-          </div>
-          
-          <div class="panel">
-            <h2 class="panel-title">Tool Configuration</h2>
-            <div class="form-group">
-              <label for="cfg-tool-head1">Head 1 Tool</label>
-              <select id="cfg-tool-head1">
-                <option value="pen">Pen / Marker</option>
-                <option value="dragknife" selected>Drag Knife</option>
-                <option value="cutter">Cutter / Spindle</option>
-                <option value="controllerknife">Controller Knife</option>
-              </select>
-            </div>
-            <div class="form-group" id="group-tool-head2" style="display: none;">
-              <label for="cfg-tool-head2">Head 2 Tool</label>
-              <select id="cfg-tool-head2">
-                <option value="pen" selected>Pen / Marker</option>
-                <option value="dragknife">Drag Knife</option>
-                <option value="cutter">Cutter / Spindle</option>
-                <option value="controllerknife">Controller Knife</option>
-              </select>
-            </div>
-          </div>
-            
-          <button id="btn-compile-flash" class="btn btn-accent btn-full" style="margin-top: 16px;">Apply Config & Flash Custom Firmware</button>
-          <div id="compile-status" style="margin-top: 12px; font-size: 0.85rem; color: var(--text-secondary); text-align: center;"></div>
-          <pre id="compile-terminal" style="display: none; background: #000; color: #0f0; padding: 8px; font-size: 0.75rem; height: 150px; overflow-y: auto; margin-top: 12px; white-space: pre-wrap; word-wrap: break-word;"></pre>
-        </div>
-
-        <!-- Tab 4: Firmware Flasher -->
-        <div class="tab-content" id="tab-firmware" style="padding: 16px;">
-          <div class="panel">
-            <h2 class="panel-title">Flash Firmware</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">Flash a pre-compiled OpenPlotter firmware.</p>
-            
-            <div class="form-group">
-              <label for="flash-board-type">Target Board</label>
-              <select id="flash-board-type">
-                <option value="mega">Arduino Mega 2560 (RAMPS 1.4)</option>
-                <option value="nano">Arduino Nano</option>
-              </select>
-            </div>
-            
-            <div class="form-group">
-              <label for="flash-port">Target Port</label>
-              <div style="display: flex; gap: 8px;">
-                <select id="flash-port" style="flex: 1;">
-                  <option value="">Select a COM Port...</option>
-                </select>
-                <button id="btn-detect-ports" class="btn" title="Refresh Ports">🔄</button>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="flash-file">Firmware HEX File</label>
-              <select id="flash-file-source" style="margin-bottom: 8px;">
-                <option value="bundled">Built-in v1.2.0 Release</option>
-                <option value="custom">Custom HEX File</option>
-              </select>
-              <input type="file" id="flash-file" accept=".hex" style="color: var(--text-color); font-size: 0.85rem; display: none;" />
-            </div>
-
-            <button id="btn-flash-firmware" class="btn btn-accent btn-full" style="margin-top: 16px;">Flash Firmware</button>
-            
-            <div id="flash-status" style="margin-top: 12px; font-size: 0.85rem; color: var(--text-secondary); text-align: center;"></div>
-            <pre id="flash-terminal" style="display: none; background: #000; color: #0f0; padding: 8px; font-size: 0.75rem; height: 150px; overflow-y: auto; margin-top: 12px; white-space: pre-wrap; word-wrap: break-word;"></pre>
           </div>
         </div>
-        </div>
-      </aside>
 
-    <!-- Bottom Bar: Stats and Active Progress -->
+        <!-- Tool Configuration -->
+        <div class="panel">
+          <h2 class="panel-title">Tool Heads</h2>
+          <div class="form-group">
+            <label for="cfg-tool-head1">Head 1 Tool</label>
+            <select id="cfg-tool-head1">
+              <option value="pen">Pen / Marker</option>
+              <option value="dragknife" selected>Drag Knife</option>
+              <option value="cutter">Cutter / Spindle</option>
+              <option value="controllerknife">Controller Knife</option>
+            </select>
+          </div>
+          <div class="form-group" id="group-tool-head2" style="display: none;">
+            <label for="cfg-tool-head2">Head 2 Tool</label>
+            <select id="cfg-tool-head2">
+              <option value="pen" selected>Pen / Marker</option>
+              <option value="dragknife">Drag Knife</option>
+              <option value="cutter">Cutter / Spindle</option>
+              <option value="controllerknife">Controller Knife</option>
+            </select>
+          </div>
+
+          <!-- Dual-Head Workflow (shown only when 2 heads) -->
+          <div id="workflow-selector" style="display: none;">
+            <label style="margin-bottom: 6px; display: block;">Workflow Order</label>
+            <div class="workflow-cards" id="workflow-cards">
+              <!-- Populated dynamically by main.js -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Drivers -->
+        <div class="panel">
+          <h2 class="panel-title">Stepper Drivers</h2>
+          <div class="form-group">
+            <label for="cfg-driver-type">Driver Type</label>
+            <select id="cfg-driver-type">
+              <option value="a4988">A4988 / DRV8825</option>
+              <option value="tmc2208">TMC2208 (UART)</option>
+              <option value="tmc2209" selected>TMC2209 (UART)</option>
+              <option value="tmc2130">TMC2130 (SPI)</option>
+              <option value="tmc5160">TMC5160 (SPI)</option>
+            </select>
+          </div>
+          <div class="form-group" id="group-motor-current">
+            <label for="cfg-motor-current">Motor Current (mA)</label>
+            <input type="number" id="cfg-motor-current" value="800" step="50" min="200" max="2000">
+          </div>
+          <div class="input-row">
+            <div class="form-group">
+              <label for="cfg-invert-x">Invert X</label>
+              <input type="checkbox" id="cfg-invert-x">
+            </div>
+            <div class="form-group">
+              <label for="cfg-invert-y">Invert Y</label>
+              <input type="checkbox" id="cfg-invert-y">
+            </div>
+          </div>
+        </div>
+
+        <!-- Machine Limits -->
+        <div class="panel">
+          <h2 class="panel-title">Limits & Steps</h2>
+          <div class="input-row">
+            <div class="form-group">
+              <label for="cfg-steps-x">X Steps/mm</label>
+              <input type="number" id="cfg-steps-x" value="80" step="0.1">
+            </div>
+            <div class="form-group">
+              <label for="cfg-steps-y">Y Steps/mm</label>
+              <input type="number" id="cfg-steps-y" value="80" step="0.1">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="form-group">
+              <label for="cfg-max-speed">Max Speed (mm/min)</label>
+              <input type="number" id="cfg-max-speed" value="5000" step="100">
+            </div>
+            <div class="form-group">
+              <label for="cfg-max-accel">Accel (mm/s²)</label>
+              <input type="number" id="cfg-max-accel" value="500" step="10">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="form-group">
+              <label for="cfg-bed-x">Bed Size X (mm)</label>
+              <input type="number" id="cfg-bed-x" value="300" step="10">
+            </div>
+            <div class="form-group">
+              <label for="cfg-bed-y">Bed Size Y (mm)</label>
+              <input type="number" id="cfg-bed-y" value="300" step="10">
+            </div>
+          </div>
+        </div>
+
+        <button id="btn-compile-flash" class="btn btn-accent btn-full" style="margin-top: 12px;">Apply Config & Flash Firmware</button>
+        <div id="compile-status" style="margin-top: 8px; font-size: 0.82rem; color: var(--text-secondary); text-align: center;"></div>
+        <pre id="compile-terminal" class="flash-terminal" style="display: none;"></pre>
+      </div>
+
+      <!-- ── Tab 5: Firmware Flash ── -->
+      <div class="tab-content" id="tab-firmware" style="padding: 14px;">
+        <div class="panel">
+          <h2 class="panel-title">⚡ Flash Firmware</h2>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px 0;">Flash pre-compiled or custom firmware to your board.</p>
+
+          <!-- Toolchain Status -->
+          <div class="toolchain-status" id="toolchain-status">
+            <div class="toolchain-item">
+              <span class="toolchain-name">avrdude</span>
+              <span class="toolchain-badge toolchain-missing" id="tc-avrdude">Checking...</span>
+            </div>
+            <div class="toolchain-item">
+              <span class="toolchain-name">arduino-cli</span>
+              <span class="toolchain-badge toolchain-missing" id="tc-arduino-cli">Checking...</span>
+            </div>
+            <div class="toolchain-item">
+              <span class="toolchain-name">esptool</span>
+              <span class="toolchain-badge toolchain-missing" id="tc-esptool">Checking...</span>
+            </div>
+          </div>
+          <button id="btn-install-tools" class="btn btn-full" style="margin-bottom: 12px;">Auto-Install Missing Tools</button>
+
+          <div class="form-group">
+            <label for="flash-board-type">Target Board</label>
+            <select id="flash-board-type">
+              <option value="mega">Arduino Mega 2560</option>
+              <option value="nano-new">Arduino Nano (New Bootloader)</option>
+              <option value="nano-old">Arduino Nano (Old Bootloader)</option>
+              <option value="uno">Arduino Uno</option>
+              <option value="esp32">ESP32 DevKit</option>
+              <option value="esp32s3">ESP32-S3</option>
+              <option value="stm32">STM32 BluePill</option>
+              <option value="pico">Raspberry Pi Pico</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="flash-port">Target Port</label>
+            <div style="display: flex; gap: 6px;">
+              <select id="flash-port" style="flex: 1;">
+                <option value="">Select a Port...</option>
+              </select>
+              <button id="btn-detect-ports" class="btn" title="Scan Ports">🔄</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="flash-file-source">Firmware Source</label>
+            <select id="flash-file-source">
+              <option value="bundled">Built-in Release</option>
+              <option value="custom">Custom HEX/BIN File</option>
+            </select>
+            <input type="file" id="flash-file" accept=".hex,.bin,.uf2" style="color: var(--text-primary); font-size: 0.82rem; display: none; margin-top: 6px;" />
+          </div>
+
+          <button id="btn-flash-firmware" class="btn btn-accent btn-full" style="margin-top: 12px;">Flash Firmware</button>
+          <div id="flash-status" style="margin-top: 8px; font-size: 0.82rem; color: var(--text-secondary); text-align: center;"></div>
+          <pre id="flash-terminal" class="flash-terminal" style="display: none;"></pre>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ═══════════ Log Panel (collapsible) ═══════════ -->
+    <div class="log-panel glass-panel" id="log-panel">
+      <div class="log-header" id="log-header">
+        <div class="log-title">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          Activity Log
+        </div>
+        <div class="log-controls">
+          <button class="log-filter-btn active" data-category="SERIAL">Serial</button>
+          <button class="log-filter-btn active" data-category="GCODE">G-code</button>
+          <button class="log-filter-btn active" data-category="FLASH">Flash</button>
+          <button class="log-filter-btn active" data-category="SYSTEM">System</button>
+          <button class="log-filter-btn active" data-category="ERROR">Error</button>
+          <button class="log-filter-btn active" data-category="CMD">Cmd</button>
+          <input type="text" class="log-search" id="log-search" placeholder="Search...">
+          <span class="log-line-count" id="log-line-count">0 lines</span>
+          <button class="log-action-btn" id="log-export" title="Export log">💾</button>
+          <button class="log-action-btn" id="log-clear" title="Clear log">🗑</button>
+        </div>
+      </div>
+      <div class="log-content" id="log-content"></div>
+    </div>
+
+    <!-- ═══════════ Footer ═══════════ -->
     <footer class="bottom-bar glass-panel">
       <div class="progress-container">
-        <span id="progress-text">Progress: 0%</span>
+        <span id="progress-text">Ready</span>
         <div class="progress-track">
           <div id="progress-fill" class="progress-fill"></div>
         </div>
-        <span id="progress-stats" style="color: var(--text-muted); font-size: 0.75rem;">(0/0 lines)</span>
+        <span id="progress-stats" style="color: var(--text-muted); font-size: 0.72rem;">(0/0)</span>
       </div>
       <div class="coordinate-display">
-        <div>X: <span id="coord-x" class="coord-val">0.00</span> mm</div>
-        <div>Y: <span id="coord-y" class="coord-val">0.00</span> mm</div>
-        <div>Z: <span id="coord-z" class="coord-val">0.00</span> mm</div>
+        <div>X: <span id="coord-x" class="coord-val">0.00</span></div>
+        <div>Y: <span id="coord-y" class="coord-val">0.00</span></div>
+        <div>Z: <span id="coord-z" class="coord-val">0.00</span></div>
       </div>
     </footer>
   </div>
 
-    <!-- Connection Dialog Modal -->
-    <div id="modal-connect" class="modal-overlay">
-      <div class="modal">
-        <header class="modal-header">
-          <span>Connect to OpenPlotter</span>
-          <button id="btn-close-connect" class="btn" style="padding: 2px 8px; border: none; font-size: 1.2rem; background: transparent;">&times;</button>
-        </header>
-        <div class="modal-body">
+  <!-- ═══════════ Connection Modal ═══════════ -->
+  <div id="modal-connect" class="modal-overlay">
+    <div class="modal">
+      <header class="modal-header">
+        <span>Connect to OpenPlotter</span>
+        <button id="btn-close-connect" class="btn" style="padding: 2px 8px; border: none; font-size: 1.1rem; background: transparent;">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Connection Mode</label>
+          <div style="display: flex; gap: 12px; margin-top: 4px;">
+            <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; color: var(--text-primary); font-size: 0.85rem; text-transform: none; letter-spacing: 0;">
+              <input type="radio" name="conn-mode" value="usb" checked style="width: auto; margin: 0;">
+              USB / Serial
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; color: var(--text-primary); font-size: 0.85rem; text-transform: none; letter-spacing: 0;">
+              <input type="radio" name="conn-mode" value="wifi" style="width: auto; margin: 0;">
+              WiFi / WebSocket
+            </label>
+          </div>
+        </div>
+
+        <!-- USB Params -->
+        <div id="conn-params-usb">
           <div class="form-group">
-            <label>Connection Mode</label>
-            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-              <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; color: var(--text-primary);">
-                <input type="radio" name="conn-mode" value="usb" checked style="width: auto; margin: 0;">
-                USB / Serial (Web Serial)
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; color: var(--text-primary);">
-                <input type="radio" name="conn-mode" value="wifi" style="width: auto; margin: 0;">
-                WiFi / WebSocket
-              </label>
-            </div>
+            <label for="conn-usb-baud">Baud Rate</label>
+            <select id="conn-usb-baud">
+              <option value="9600">9600</option>
+              <option value="57600">57600</option>
+              <option value="115200" selected>115200</option>
+              <option value="250000">250000</option>
+            </select>
           </div>
-
-          <!-- USB Parameters -->
-          <div id="conn-params-usb">
-            <div class="form-group">
-              <label for="conn-usb-baud">Baud Rate</label>
-              <select id="conn-usb-baud">
-                <option value="9600">9600</option>
-                <option value="57600">57600</option>
-                <option value="115200" selected>115200</option>
-                <option value="250000">250000</option>
+          <div class="form-group">
+            <label for="conn-usb-port">Select Port</label>
+            <div style="display: flex; gap: 6px;">
+              <select id="conn-usb-port" style="flex: 1;">
+                <option value="">(Web Serial overrides this)</option>
               </select>
-            </div>
-            <div class="form-group">
-              <label for="conn-usb-port">Select Port</label>
-              <div style="display: flex; gap: 8px;">
-                <select id="conn-usb-port" style="flex: 1;">
-                  <option value="">(Web Serial overrides this)</option>
-                </select>
-                <button id="btn-conn-detect" class="btn" title="Refresh Ports">↻</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- WiFi Parameters -->
-          <div id="conn-params-wifi" style="display: none;">
-            <div class="form-group">
-              <label for="conn-wifi-ip">Plotter IP Address</label>
-              <input type="text" id="conn-wifi-ip" value="openplotter.local" placeholder="192.168.4.1 or openplotter.local">
+              <button id="btn-conn-detect" class="btn" title="Refresh">↻</button>
             </div>
           </div>
         </div>
-        <footer class="modal-footer">
-          <button id="btn-modal-cancel" class="btn">Cancel</button>
-          <button id="btn-modal-connect" class="btn btn-primary">Connect</button>
-        </footer>
-      </div>
-    </div>
 
-    <!-- Script Entry Point -->
-    <script type="module" src="/src/main.js"></script>
+        <!-- WiFi Params -->
+        <div id="conn-params-wifi" style="display: none;">
+          <div class="form-group">
+            <label for="conn-wifi-ip">Plotter IP Address</label>
+            <input type="text" id="conn-wifi-ip" value="openplotter.local" placeholder="192.168.4.1 or openplotter.local">
+          </div>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button id="btn-modal-cancel" class="btn">Cancel</button>
+        <button id="btn-modal-connect" class="btn btn-primary">Connect</button>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
   </body>
 </html>

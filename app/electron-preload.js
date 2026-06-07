@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFileDialog: (options) => ipcRenderer.invoke('open-file-dialog', options || {}),
   saveFileDialog: (options) => ipcRenderer.invoke('save-file-dialog', options || {}),
   
+  // Toolchain management
+  checkToolchain: () => ipcRenderer.invoke('check-toolchain'),
+  installToolchain: () => ipcRenderer.invoke('install-toolchain'),
+  
   // App info
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   

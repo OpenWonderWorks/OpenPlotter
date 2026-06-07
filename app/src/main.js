@@ -1,73 +1,66 @@
 import './style.css';
 import { parseSVG } from './lib/svg-parser.js';
-import { generateGcode } from './lib/gcode-generator.js';
+import { generateGcode, getToolVerb, getToolAction, getToolColorClass, getToolPressureLabel, getToolSpeedLabel, getWorkflowOptions, getDualHeadLabel, estimateJobTime, formatTime } from './lib/gcode-generator.js';
 import { serial } from './lib/serial.js';
 import { websocket } from './lib/websocket.js';
+import { logManager, LOG_CATEGORY } from './lib/log-manager.js';
+import { traceImage, renderTracePreview } from './lib/image-tracer.js';
 
-// Global error handler (non-blocking)
+// ══════════════════════════════════════════════════════════════
+// Global Error Handler
+// ══════════════════════════════════════════════════════════════
 window.onerror = function(msg, url, line, col, error) {
-  console.error(`[OpenPlotter Error] ${msg} at ${url}:${line}:${col}`, error);
+  logManager.error(`Uncaught: ${msg} at ${url}:${line}:${col}`, error);
 };
 
-// ==========================================
-// Toast Notification System
-// ==========================================
+// ══════════════════════════════════════════════════════════════
+// Toast Notifications
+// ══════════════════════════════════════════════════════════════
 const toastContainer = (() => {
-  let container = document.getElementById('toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'toast-container';
-    document.body.appendChild(container);
+  let c = document.getElementById('toast-container');
+  if (!c) {
+    c = document.createElement('div');
+    c.id = 'toast-container';
+    document.body.appendChild(c);
   }
-  return container;
+  return c;
 })();
 
 function showToast(message, type = 'info', durationMs = 4000) {
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  
-  const icons = {
-    info: 'ℹ',
-    success: '✓',
-    warning: '⚠',
-    error: '✕'
-  };
-  
+  const icons = { info: 'ℹ', success: '✓', warning: '⚠', error: '✕' };
   toast.innerHTML = `
     <span class="toast-icon">${icons[type] || icons.info}</span>
     <span class="toast-message">${message}</span>
     <button class="toast-close" onclick="this.parentElement.remove()">×</button>
   `;
-  
   toastContainer.appendChild(toast);
-  
-  // Trigger entrance animation
   requestAnimationFrame(() => toast.classList.add('toast-visible'));
-  
-  // Auto-dismiss
   if (durationMs > 0) {
     setTimeout(() => {
       toast.classList.remove('toast-visible');
       toast.addEventListener('transitionend', () => toast.remove(), { once: true });
-      // Fallback removal if transition doesn't fire
       setTimeout(() => { if (toast.parentNode) toast.remove(); }, 400);
     }, durationMs);
   }
-  
   return toast;
 }
 
+// ══════════════════════════════════════════════════════════════
+// Application State
+// ══════════════════════════════════════════════════════════════
 const state = {
-  connectionMode: 'usb', // 'usb' or 'wifi'
-  connection: null,      // active connection instance (serial or websocket)
+  connectionMode: 'usb',
+  connection: null,
   connected: false,
-  svgData: null,         // parsed SVG paths & dimensions
-  gcode: '',             // generated G-code text
+  svgData: null,
+  gcode: '',
   currentPosition: { x: 0, y: 0, z: 0 },
   machineState: 'DISCONNECTED',
   activeTab: 'tab-control',
   
-  // Canvas drawing state
+  // Canvas
   zoom: 1.5,
   panX: 50,
   panY: 50,
@@ -77,7 +70,7 @@ const state = {
   bedSizeX: 300,
   bedSizeY: 300,
   
-  // Settings
+  // Settings & Profiles
   settings: {},
   profileSettings: {
     vinyl: { pressure: 90, speed: 1500, passes: 1 },
@@ -87,17 +80,24 @@ const state = {
   },
   currentProfile: 'vinyl',
   
-  // Tool state (for test button)
-  toolDown: false
+  // Tool state
+  toolDown: false,
+  selectedWorkflow: 'head1-then-2',
+  
+  // Image trace state
+  traceFile: null,
+  traceCanvas: null
 };
 
+// ══════════════════════════════════════════════════════════════
 // DOM Cache
+// ══════════════════════════════════════════════════════════════
 const dom = {
   statusBadge: document.getElementById('status-badge'),
   btnShowConnect: document.getElementById('btn-show-connect'),
   btnDisconnect: document.getElementById('btn-disconnect'),
   
-  // Modals
+  // Modal
   modalConnect: document.getElementById('modal-connect'),
   btnCloseConnect: document.getElementById('btn-close-connect'),
   btnModalCancel: document.getElementById('btn-modal-cancel'),
@@ -116,6 +116,16 @@ const dom = {
   svgH: document.getElementById('svg-h'),
   svgPaths: document.getElementById('svg-paths'),
   
+  // Trace settings
+  traceSettings: document.getElementById('trace-settings'),
+  traceThreshold: document.getElementById('trace-threshold'),
+  traceSmoothing: document.getElementById('trace-smoothing'),
+  traceSimplify: document.getElementById('trace-simplify'),
+  traceMinLength: document.getElementById('trace-min-length'),
+  traceInvert: document.getElementById('trace-invert'),
+  btnRetrace: document.getElementById('btn-retrace'),
+  tracePreview: document.getElementById('trace-preview'),
+  
   // Plotter Config
   cfgKinematics: document.getElementById('cfg-kinematics'),
   cfgHeads: document.getElementById('cfg-heads'),
@@ -125,6 +135,12 @@ const dom = {
   cfgToolHead1: document.getElementById('cfg-tool-head1'),
   groupToolHead2: document.getElementById('group-tool-head2'),
   cfgToolHead2: document.getElementById('cfg-tool-head2'),
+  workflowSelector: document.getElementById('workflow-selector'),
+  workflowCards: document.getElementById('workflow-cards'),
+  cfgBedX: document.getElementById('cfg-bed-x'),
+  cfgBedY: document.getElementById('cfg-bed-y'),
+  
+  // Ports
   flashPort: document.getElementById('flash-port'),
   btnDetectPorts: document.getElementById('btn-detect-ports'),
   connUsbPort: document.getElementById('conn-usb-port'),
@@ -137,12 +153,22 @@ const dom = {
   cfgOffsetY: document.getElementById('cfg-offset-y'),
   
   // Material/Cutting
+  panelMaterials: document.getElementById('panel-materials'),
   profileCards: document.querySelectorAll('.profile-card'),
   cfgPressure: document.getElementById('cfg-pressure'),
   cfgSpeedLinear: document.getElementById('cfg-speed-linear'),
   cfgSpeedRapid: document.getElementById('cfg-speed-rapid'),
   cfgPasses: document.getElementById('cfg-passes'),
   cfgUpDownDelays: document.getElementById('cfg-updown-delays'),
+  
+  // Dynamic labels
+  labelPressure: document.getElementById('label-pressure'),
+  labelSpeed: document.getElementById('label-speed'),
+  labelStartBtn: document.getElementById('label-start'),
+  labelGenGcode: document.getElementById('label-gen-gcode'),
+  labelToolTest: document.getElementById('label-tool-test'),
+  paramsTitle: document.getElementById('params-title'),
+  materialTitle: document.getElementById('panel-materials-title'),
   
   // Canvas Actions
   btnCanvasFit: document.getElementById('btn-canvas-fit'),
@@ -151,10 +177,10 @@ const dom = {
   btnStartCut: document.getElementById('btn-start-cut'),
   btnPauseCut: document.getElementById('btn-pause-cut'),
   btnStopCut: document.getElementById('btn-stop-cut'),
+  btnExportGcode: document.getElementById('btn-export-gcode'),
   
-  // Canvas
   canvas: document.getElementById('plotter-canvas'),
-  canvasContainer: document.getElementById('canvas-container'),
+  canvasWrapper: document.getElementById('canvas-wrapper'),
   
   // Tabs
   tabHeaders: document.querySelectorAll('.tab-header'),
@@ -172,7 +198,7 @@ const dom = {
   btnZeroXY: document.getElementById('btn-zero-xy'),
   btnToolTest: document.getElementById('btn-tool-test'),
   
-  // Quick utilities
+  // Quick utils
   btnCmdStatus: document.getElementById('btn-cmd-status'),
   btnCmdEndstops: document.getElementById('btn-cmd-endstops'),
   btnCmdHelp: document.getElementById('btn-cmd-help'),
@@ -184,7 +210,7 @@ const dom = {
   btnTerminalSend: document.getElementById('btn-terminal-send'),
   btnTerminalClear: document.getElementById('btn-terminal-clear'),
   
-  // Settings Tab
+  // Settings
   settingsLoading: document.getElementById('settings-loading'),
   btnSettingsLoad: document.getElementById('btn-settings-load'),
   settingsList: document.getElementById('settings-list'),
@@ -192,45 +218,164 @@ const dom = {
   btnSettingsSave: document.getElementById('btn-settings-save'),
   btnSettingsReset: document.getElementById('btn-settings-reset'),
   
-  // Bottom Progress
+  // Progress
   progressText: document.getElementById('progress-text'),
   progressFill: document.getElementById('progress-fill'),
   progressStats: document.getElementById('progress-stats'),
   coordX: document.getElementById('coord-x'),
   coordY: document.getElementById('coord-y'),
-  coordZ: document.getElementById('coord-z')
+  coordZ: document.getElementById('coord-z'),
+  
+  // Log panel
+  logPanel: document.getElementById('log-panel'),
+  logHeader: document.getElementById('log-header'),
+  logContent: document.getElementById('log-content'),
+  logLineCount: document.getElementById('log-line-count'),
+  logSearch: document.getElementById('log-search'),
+  logExport: document.getElementById('log-export'),
+  logClear: document.getElementById('log-clear'),
 };
 
-// Canvas 2D context
 const ctx = dom.canvas.getContext('2d');
 
-// Initialize Canvas Sizing
+// ══════════════════════════════════════════════════════════════
+// Initialize Log Manager
+// ══════════════════════════════════════════════════════════════
+function setupLogPanel() {
+  logManager.bind(dom.logPanel, dom.logContent, dom.logLineCount);
+  
+  // Log panel collapse/expand
+  dom.logHeader.addEventListener('click', (e) => {
+    if (e.target.closest('.log-controls')) return; // Don't toggle when clicking controls
+    dom.logPanel.classList.toggle('collapsed');
+  });
+  
+  // Category filter buttons
+  document.querySelectorAll('.log-filter-btn').forEach(btn => {
+    const cat = btn.dataset.category;
+    logManager._filterBtns[cat] = btn;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      logManager.toggleCategory(cat);
+    });
+  });
+  
+  // Search
+  if (dom.logSearch) {
+    dom.logSearch.addEventListener('input', (e) => {
+      e.stopPropagation();
+      logManager.setSearch(e.target.value);
+    });
+    dom.logSearch.addEventListener('click', (e) => e.stopPropagation());
+  }
+  
+  // Export / Clear
+  if (dom.logExport) dom.logExport.addEventListener('click', (e) => { e.stopPropagation(); logManager.exportToFile(); });
+  if (dom.logClear) dom.logClear.addEventListener('click', (e) => { e.stopPropagation(); logManager.clear(); });
+  
+  logManager.system('OpenPlotter v3.1.0 initialized');
+}
+
+// ══════════════════════════════════════════════════════════════
+// Canvas Sizing
+// ══════════════════════════════════════════════════════════════
 function resizeCanvas() {
-  const containerWidth = dom.canvasContainer.clientWidth;
-  const containerHeight = dom.canvasContainer.clientHeight;
-  const size = Math.min(containerWidth, containerHeight, 600) - 32;
-  dom.canvas.width = size;
-  dom.canvas.height = size;
+  if (!dom.canvasWrapper) return;
+  const w = dom.canvasWrapper.clientWidth;
+  const h = dom.canvasWrapper.clientHeight;
+  const size = Math.min(w, h, 600) - 16;
+  if (size > 0) {
+    dom.canvas.width = size;
+    dom.canvas.height = size;
+  }
   drawCanvas();
 }
 window.addEventListener('resize', resizeCanvas);
-// Run initial resize
 setTimeout(resizeCanvas, 100);
 
-// Set default connection
+// Default connection
 state.connection = serial;
 
-// --- Connectivity Managers ---
-function setupConnectionHandlers() {
-  // Bind Connection Dialog trigger
-  dom.btnShowConnect.addEventListener('click', () => {
-    dom.modalConnect.classList.add('open');
-  });
+// ══════════════════════════════════════════════════════════════
+// Tool-Aware UI Updates
+// ══════════════════════════════════════════════════════════════
+function updateToolLabels() {
+  const heads = dom.cfgHeads ? parseInt(dom.cfgHeads.value) : 1;
+  const tool1 = dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife';
+  const tool2 = dom.cfgToolHead2 ? dom.cfgToolHead2.value : 'pen';
+  const isPen = tool1 === 'pen';
   
+  const verb = getToolVerb(tool1);
+  const action = getToolAction(tool1);
+  
+  // Update button labels
+  if (dom.labelStartBtn) {
+    if (heads > 1) {
+      dom.labelStartBtn.textContent = getDualHeadLabel(tool1, tool2, state.selectedWorkflow);
+    } else {
+      dom.labelStartBtn.textContent = `Start ${action}`;
+    }
+  }
+  
+  if (dom.labelGenGcode) {
+    dom.labelGenGcode.textContent = heads > 1
+      ? 'Generate G-code'
+      : `Generate ${verb} Path`;
+  }
+  
+  // Update parameter labels
+  if (dom.labelPressure) dom.labelPressure.textContent = getToolPressureLabel(tool1);
+  if (dom.labelSpeed) dom.labelSpeed.textContent = getToolSpeedLabel(tool1);
+  if (dom.paramsTitle) dom.paramsTitle.textContent = `⚙ ${verb} Parameters`;
+  if (dom.labelToolTest) dom.labelToolTest.textContent = `Test ${verb}`;
+  
+  // Show/hide material profiles (pens don't need material profiles)
+  if (dom.panelMaterials) {
+    dom.panelMaterials.style.display = isPen ? 'none' : 'block';
+  }
+  
+  // Update start button color class
+  const colorClass = getToolColorClass(tool1);
+  dom.btnStartCut.className = dom.btnStartCut.className
+    .replace(/btn-tool-\w+/g, '')
+    .replace(/btn-primary/g, '')
+    .trim();
+  dom.btnStartCut.classList.add(`btn-tool-${colorClass}`);
+  
+  // Workflow selector for dual heads
+  if (heads > 1) {
+    updateWorkflowSelector(tool1, tool2);
+  }
+}
+
+function updateWorkflowSelector(tool1, tool2) {
+  if (!dom.workflowCards) return;
+  
+  const options = getWorkflowOptions(tool1, tool2);
+  dom.workflowCards.innerHTML = '';
+  
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = `workflow-card${opt.id === state.selectedWorkflow ? ' active' : ''}`;
+    btn.innerHTML = `<span class="workflow-card-icon">${opt.icon}</span><span>${opt.label}</span>`;
+    btn.addEventListener('click', () => {
+      state.selectedWorkflow = opt.id;
+      dom.workflowCards.querySelectorAll('.workflow-card').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      updateToolLabels();
+    });
+    dom.workflowCards.appendChild(btn);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// Connection Handlers
+// ══════════════════════════════════════════════════════════════
+function setupConnectionHandlers() {
+  dom.btnShowConnect.addEventListener('click', () => dom.modalConnect.classList.add('open'));
   dom.btnCloseConnect.addEventListener('click', () => dom.modalConnect.classList.remove('open'));
   dom.btnModalCancel.addEventListener('click', () => dom.modalConnect.classList.remove('open'));
   
-  // Toggle connection parameters visually based on Radio select
   dom.connModeRadio.forEach(radio => {
     radio.addEventListener('change', (e) => {
       state.connectionMode = e.target.value;
@@ -246,28 +391,31 @@ function setupConnectionHandlers() {
     });
   });
 
-  // Auto-detect Ports Helper
   const detectPorts = async () => {
     if (!window.electronAPI) return;
-    const ports = await window.electronAPI.detectBoards();
-    [dom.flashPort, dom.connUsbPort].forEach(select => {
-      if (!select) return;
-      select.innerHTML = '<option value="">Select a COM Port...</option>';
-      ports.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.path;
-        opt.innerText = `${p.path} ${p.isArduino ? `(${p.hint})` : ''}`;
-        if (p.isArduino) opt.selected = true; // Auto-select the first arduino
-        select.appendChild(opt);
+    try {
+      const ports = await window.electronAPI.detectBoards();
+      [dom.flashPort, dom.connUsbPort].forEach(select => {
+        if (!select) return;
+        select.innerHTML = '<option value="">Select a Port...</option>';
+        ports.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.path;
+          opt.innerText = `${p.path}${p.isArduino ? ` — ${p.hint}` : ''}`;
+          if (p.isArduino) opt.selected = true;
+          select.appendChild(opt);
+        });
       });
-    });
+      logManager.system(`Port scan: found ${ports.length} port(s)`);
+    } catch (err) {
+      logManager.error('Port detection failed', err);
+    }
   };
 
   if (dom.btnDetectPorts) dom.btnDetectPorts.addEventListener('click', detectPorts);
   if (dom.btnConnDetect) dom.btnConnDetect.addEventListener('click', detectPorts);
   detectPorts();
   
-  // Trigger connection
   dom.btnModalConnect.addEventListener('click', async () => {
     dom.btnModalConnect.disabled = true;
     dom.btnModalConnect.innerText = 'Connecting...';
@@ -275,15 +423,18 @@ function setupConnectionHandlers() {
     try {
       if (state.connectionMode === 'usb') {
         const baud = parseInt(dom.connUsbBaud.value);
-        const portPath = dom.connUsbPort.value;
+        const portPath = dom.connUsbPort ? dom.connUsbPort.value : '';
+        logManager.system(`Connecting via USB (baud: ${baud})...`);
         await serial.connect(baud, portPath);
       } else {
         const ip = dom.connWifiIp.value.trim();
+        logManager.system(`Connecting via WebSocket to ${ip}...`);
         await websocket.connect(ip);
       }
       dom.modalConnect.classList.remove('open');
     } catch (err) {
       showToast(`Connection failed: ${err.message || err}`, 'error', 6000);
+      logManager.error('Connection failed', err);
     } finally {
       dom.btnModalConnect.disabled = false;
       dom.btnModalConnect.innerText = 'Connect';
@@ -291,27 +442,26 @@ function setupConnectionHandlers() {
   });
   
   dom.btnDisconnect.addEventListener('click', async () => {
+    logManager.system('Disconnecting...');
     await state.connection.disconnect();
   });
 }
 
-// Bind connection events
 function registerConnectionCallbacks() {
-  // Shared bindings for serial/websocket
   [serial, websocket].forEach(conn => {
     conn.onConnect = () => {
       state.connected = true;
       dom.btnShowConnect.style.display = 'none';
       dom.btnDisconnect.style.display = 'inline-flex';
-      
       dom.terminalInput.disabled = false;
       dom.btnTerminalSend.disabled = false;
-      dom.btnSettingsLoad.disabled = false;
+      if (dom.btnSettingsLoad) dom.btnSettingsLoad.disabled = false;
       
-      logToTerminal('System Connected.', 'info');
+      logManager.system('Machine connected');
+      logToTerminal('Connected.', 'info');
+      showToast('Machine connected', 'success', 3000);
       updateStartCutStatus();
       
-      // Request initial settings and status
       setTimeout(() => {
         conn.sendRealtimeCharacter('?');
         conn.sendLine('$$');
@@ -320,25 +470,27 @@ function registerConnectionCallbacks() {
 
     conn.onError = (context, err) => {
       showToast(`${context}: ${err.message || err}`, 'error', 5000);
+      logManager.error(`${context}: ${err.message || err}`);
     };
     
     conn.onDisconnect = () => {
       state.connected = false;
       dom.btnShowConnect.style.display = 'inline-flex';
       dom.btnDisconnect.style.display = 'none';
-      
       dom.terminalInput.disabled = true;
       dom.btnTerminalSend.disabled = true;
-      dom.btnSettingsLoad.disabled = true;
+      if (dom.btnSettingsLoad) dom.btnSettingsLoad.disabled = true;
       
       state.machineState = 'DISCONNECTED';
       updateStatusBadge();
-      logToTerminal('System Disconnected.', 'info');
+      logManager.system('Machine disconnected');
+      logToTerminal('Disconnected.', 'info');
       updateStartCutStatus();
     };
     
     conn.onLineReceived = (line) => {
       logToTerminal(line, 'rx');
+      logManager.serial(line, 'rx');
       parseSettingsOutput(line);
     };
     
@@ -355,13 +507,16 @@ function registerConnectionCallbacks() {
     };
     
     conn.onProgress = (percent, index, total) => {
+      const verb = getToolAction(dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife');
       dom.progressFill.style.width = `${percent}%`;
-      dom.progressText.innerText = `Progress: ${percent}%`;
-      dom.progressStats.innerText = `(${index}/${total} lines)`;
+      dom.progressText.innerText = `${verb}: ${percent}%`;
+      dom.progressStats.innerText = `(${index}/${total})`;
       
       if (percent === 100) {
-        logToTerminal('Cut Completed Successfully!', 'info');
-        showToast('Cut completed successfully!', 'success', 6000);
+        logManager.gcode('Job completed successfully!');
+        logToTerminal('Job completed!', 'info');
+        showToast('Job completed successfully!', 'success', 6000);
+        dom.progressText.innerText = 'Complete';
         resetCutButtons();
       }
     };
@@ -376,56 +531,62 @@ function updateStatusBadge() {
 function logToTerminal(text, type) {
   const line = document.createElement('div');
   line.className = `terminal-line terminal-${type}`;
-  
-  if (type === 'tx') {
-    line.innerText = `> ${text}`;
-  } else if (type === 'rx') {
-    line.innerText = `< ${text}`;
-  } else {
-    line.innerText = text;
-  }
-  
+  line.innerText = type === 'tx' ? `> ${text}` : type === 'rx' ? `< ${text}` : text;
   dom.terminalLog.appendChild(line);
   dom.terminalLog.scrollTop = dom.terminalLog.scrollHeight;
-  
-  // Cap terminal lines to prevent memory issues
   while (dom.terminalLog.childNodes.length > 200) {
     dom.terminalLog.removeChild(dom.terminalLog.firstChild);
   }
 }
 
-// --- SVG Parsing & Canvas UI ---
+// ══════════════════════════════════════════════════════════════
+// File Import (SVG + PNG/JPG)
+// ══════════════════════════════════════════════════════════════
 function setupFileImporter() {
-  // Prevent browser default behaviors
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-    dom.dropzone.addEventListener(eventName, e => e.preventDefault(), false);
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
+    dom.dropzone.addEventListener(ev, e => e.preventDefault(), false);
   });
   
-  dom.dropzone.addEventListener('dragover', () => {
-    dom.dropzone.style.borderColor = 'var(--accent-cyan)';
-  });
-  
-  dom.dropzone.addEventListener('dragleave', () => {
-    dom.dropzone.style.borderColor = 'var(--border-color)';
-  });
+  dom.dropzone.addEventListener('dragover', () => dom.dropzone.classList.add('drag-over'));
+  dom.dropzone.addEventListener('dragleave', () => dom.dropzone.classList.remove('drag-over'));
   
   dom.dropzone.addEventListener('drop', (e) => {
-    dom.dropzone.style.borderColor = 'var(--border-color)';
+    dom.dropzone.classList.remove('drag-over');
     const file = e.dataTransfer.files[0];
-    if (file) handleSVGFile(file);
+    if (file) handleFileImport(file);
   });
   
-  dom.dropzone.addEventListener('click', () => {
-    dom.fileInput.click();
-  });
-  
+  dom.dropzone.addEventListener('click', () => dom.fileInput.click());
   dom.fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (file) handleSVGFile(file);
+    if (file) handleFileImport(file);
   });
+  
+  // Re-trace button
+  if (dom.btnRetrace) {
+    dom.btnRetrace.addEventListener('click', () => {
+      if (state.traceFile) handleRasterFile(state.traceFile);
+    });
+  }
+}
+
+function handleFileImport(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  
+  if (ext === 'svg') {
+    handleSVGFile(file);
+  } else if (['png', 'jpg', 'jpeg'].includes(ext)) {
+    handleRasterFile(file);
+  } else {
+    showToast(`Unsupported file type: .${ext}`, 'warning');
+  }
 }
 
 function handleSVGFile(file) {
+  // Hide trace settings
+  if (dom.traceSettings) dom.traceSettings.style.display = 'none';
+  state.traceFile = null;
+  
   const reader = new FileReader();
   reader.onload = (e) => {
     const svgText = e.target.result;
@@ -434,28 +595,75 @@ function handleSVGFile(file) {
     try {
       state.svgData = parseSVG(svgText, tolerance);
       
-      // Update info box
       dom.svgW.innerText = Math.round(state.svgData.width);
       dom.svgH.innerText = Math.round(state.svgData.height);
       dom.svgPaths.innerText = state.svgData.paths.length;
       dom.svgInfo.style.display = 'block';
       
-      logToTerminal(`Parsed SVG. Found ${state.svgData.paths.length} paths.`, 'info');
+      logManager.gcode(`Parsed SVG: ${state.svgData.paths.length} paths (${state.svgData.width}×${state.svgData.height})`);
       
       autoFitDesign();
       dom.btnGenGcode.disabled = false;
       drawCanvas();
     } catch (err) {
       showToast(`Failed to parse SVG: ${err.message}`, 'error', 6000);
+      logManager.error('SVG parse failed', err);
     }
   };
   reader.readAsText(file);
 }
 
+async function handleRasterFile(file) {
+  state.traceFile = file;
+  if (dom.traceSettings) dom.traceSettings.style.display = 'block';
+  
+  const options = {
+    threshold: parseInt(dom.traceThreshold?.value) || 128,
+    smoothing: parseInt(dom.traceSmoothing?.value) || 1,
+    simplifyTolerance: parseFloat(dom.traceSimplify?.value) || 1.5,
+    minPathLength: parseInt(dom.traceMinLength?.value) || 5,
+    invert: dom.traceInvert?.checked || false,
+    blur: true
+  };
+  
+  try {
+    logManager.system(`Tracing image: ${file.name}...`);
+    const result = await traceImage(file, options);
+    
+    state.svgData = {
+      paths: result.paths,
+      width: result.width,
+      height: result.height,
+      viewBox: null
+    };
+    state.traceCanvas = result.originalCanvas;
+    
+    dom.svgW.innerText = Math.round(result.width);
+    dom.svgH.innerText = Math.round(result.height);
+    dom.svgPaths.innerText = result.paths.length;
+    dom.svgInfo.style.display = 'block';
+    
+    // Render trace preview
+    if (dom.tracePreview) {
+      renderTracePreview(result.originalCanvas, result.paths, dom.tracePreview);
+      dom.tracePreview.style.display = 'block';
+    }
+    
+    logManager.gcode(`Traced image: ${result.paths.length} paths from ${file.name}`);
+    showToast(`Traced ${result.paths.length} paths from image`, 'success', 3000);
+    
+    autoFitDesign();
+    dom.btnGenGcode.disabled = false;
+    drawCanvas();
+  } catch (err) {
+    showToast(`Failed to trace image: ${err.message}`, 'error', 6000);
+    logManager.error('Image trace failed', err);
+  }
+}
+
 function autoFitDesign() {
   if (!state.svgData) return;
   
-  // Calculate bounds of current SVG paths
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
   
@@ -468,190 +676,132 @@ function autoFitDesign() {
     });
   });
   
-  if (minX === Infinity) return; // empty svg
+  if (minX === Infinity) return;
   
   const designWidth = maxX - minX;
   const designHeight = maxY - minY;
-  
-  // Target dimensions (with 10mm margins)
   const margin = 10;
   const targetW = state.bedSizeX - 2 * margin;
   const targetH = state.bedSizeY - 2 * margin;
-  
-  // Compute scale to fit best
   const scaleX = targetW / designWidth;
   const scaleY = targetH / designHeight;
   const finalScale = parseFloat(Math.min(scaleX, scaleY).toFixed(3));
   
   dom.cfgScale.value = finalScale;
   
-  // Center it on the bed
-  const scaledCenter = {
-    x: minX + designWidth / 2,
-    y: minY + designHeight / 2
-  };
+  const scaledCenter = { x: minX + designWidth / 2, y: minY + designHeight / 2 };
   const bedCenter = { x: state.bedSizeX / 2, y: state.bedSizeY / 2 };
   
-  // Offset to match center
   dom.cfgOffsetX.value = Math.round(bedCenter.x - scaledCenter.x * finalScale);
   dom.cfgOffsetY.value = Math.round(bedCenter.y - scaledCenter.y * finalScale);
   
-  logToTerminal(`Auto-fitted design. Scale: ${finalScale}, Offset X: ${dom.cfgOffsetX.value}, Offset Y: ${dom.cfgOffsetY.value}`, 'info');
+  logManager.gcode(`Auto-fit: scale=${finalScale}, offset=(${dom.cfgOffsetX.value}, ${dom.cfgOffsetY.value})`);
 }
 
-// Canvas Drawing Loop
+// ══════════════════════════════════════════════════════════════
+// Canvas Drawing
+// ══════════════════════════════════════════════════════════════
 function drawCanvas() {
   if (!dom.canvas) return;
   
   ctx.clearRect(0, 0, dom.canvas.width, dom.canvas.height);
-  
   ctx.save();
-  // Set pan and zoom transforms
   ctx.translate(state.panX, state.panY);
   ctx.scale(state.zoom, state.zoom);
   
-  // 1. Draw Plotter Bed boundary (0,0 to 300,300)
-  ctx.fillStyle = '#0a0d16';
+  // Bed background
+  ctx.fillStyle = '#080a10';
   ctx.fillRect(0, 0, state.bedSizeX, state.bedSizeY);
-  
-  // Draw bed border grid
-  ctx.strokeStyle = '#1e293b';
+  ctx.strokeStyle = 'rgba(108, 140, 255, 0.08)';
   ctx.lineWidth = 1;
   ctx.strokeRect(0, 0, state.bedSizeX, state.bedSizeY);
   
-  // Grid Lines (every 10mm thin, 50mm thick)
+  // Grid
   for (let x = 10; x < state.bedSizeX; x += 10) {
-    ctx.strokeStyle = (x % 50 === 0) ? '#334155' : '#1e293b';
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, state.bedSizeY);
-    ctx.stroke();
+    ctx.strokeStyle = (x % 50 === 0) ? 'rgba(108, 140, 255, 0.12)' : 'rgba(108, 140, 255, 0.04)';
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, state.bedSizeY); ctx.stroke();
   }
   for (let y = 10; y < state.bedSizeY; y += 10) {
-    ctx.strokeStyle = (y % 50 === 0) ? '#334155' : '#1e293b';
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(state.bedSizeX, y);
-    ctx.stroke();
+    ctx.strokeStyle = (y % 50 === 0) ? 'rgba(108, 140, 255, 0.12)' : 'rgba(108, 140, 255, 0.04)';
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(state.bedSizeX, y); ctx.stroke();
   }
   
-  // 2. Draw SVG paths
+  // SVG paths
   if (state.svgData) {
     const scale = parseFloat(dom.cfgScale.value) || 1.0;
     const offX = parseFloat(dom.cfgOffsetX.value) || 0;
     const offY = parseFloat(dom.cfgOffsetY.value) || 0;
     
-    ctx.strokeStyle = 'rgba(0, 230, 243, 0.7)';
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.75)';
     ctx.lineWidth = 1.5;
     
     state.svgData.paths.forEach(path => {
       if (path.length === 0) return;
-      
       ctx.beginPath();
-      // Apply offset and scaling
-      const first = path[0];
-      ctx.moveTo(first.x * scale + offX, first.y * scale + offY);
-      
+      ctx.moveTo(path[0].x * scale + offX, path[0].y * scale + offY);
       for (let i = 1; i < path.length; i++) {
-        const pt = path[i];
-        ctx.lineTo(pt.x * scale + offX, pt.y * scale + offY);
+        ctx.lineTo(path[i].x * scale + offX, path[i].y * scale + offY);
       }
       ctx.stroke();
     });
   }
   
-  // 3. Draw active pen/blade tool position
+  // Tool position crosshair
   const tx = state.currentPosition.x;
   const ty = state.currentPosition.y;
   
-  // Draw glowing crosshair at current coordinate
-  ctx.strokeStyle = '#ff007f';
+  ctx.strokeStyle = '#f59e42';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  // Horizontal crosshair line
-  ctx.moveTo(tx - 10, ty);
-  ctx.lineTo(tx + 10, ty);
-  // Vertical crosshair line
-  ctx.moveTo(tx, ty - 10);
-  ctx.lineTo(tx, ty + 10);
+  ctx.moveTo(tx - 8, ty); ctx.lineTo(tx + 8, ty);
+  ctx.moveTo(tx, ty - 8); ctx.lineTo(tx, ty + 8);
   ctx.stroke();
   
-  // Inner circle
-  ctx.fillStyle = '#ff007f';
+  ctx.fillStyle = '#f59e42';
   ctx.beginPath();
-  ctx.arc(tx, ty, 3, 0, 2 * Math.PI);
+  ctx.arc(tx, ty, 2.5, 0, 2 * Math.PI);
   ctx.fill();
   
-  // Glow effect
-  ctx.strokeStyle = 'rgba(255, 0, 127, 0.4)';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(245, 158, 66, 0.35)';
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
-  ctx.arc(tx, ty, 6, 0, 2 * Math.PI);
+  ctx.arc(tx, ty, 5, 0, 2 * Math.PI);
   ctx.stroke();
   
   ctx.restore();
-  
-  // Draw rulers (outside the pan/zoom transform, in screen space)
   drawRulers();
-  
-  // Draw bed origin label
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-  ctx.font = '10px monospace';
-  ctx.fillText('Origin (0,0)', 10 + state.panX, -10 + state.panY + state.bedSizeY * state.zoom);
 }
 
-// Ruler tick marks along canvas edges
 function drawRulers() {
   const z = state.zoom;
   const px = state.panX;
   const py = state.panY;
   
   ctx.save();
-  ctx.font = '9px monospace';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
   ctx.lineWidth = 1;
   
-  // X-axis ruler (top edge)
   for (let mm = 0; mm <= state.bedSizeX; mm += 10) {
     const sx = px + mm * z;
     if (sx < 0 || sx > dom.canvas.width) continue;
-    
     const isMajor = (mm % 50 === 0);
-    const tickLen = isMajor ? 10 : 5;
-    
-    ctx.beginPath();
-    ctx.moveTo(sx, 0);
-    ctx.lineTo(sx, tickLen);
-    ctx.stroke();
-    
-    if (isMajor) {
-      ctx.fillText(`${mm}`, sx + 2, 18);
-    }
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, isMajor ? 10 : 5); ctx.stroke();
+    if (isMajor) ctx.fillText(`${mm}`, sx + 2, 16);
   }
   
-  // Y-axis ruler (left edge)
   for (let mm = 0; mm <= state.bedSizeY; mm += 10) {
     const sy = py + mm * z;
     if (sy < 0 || sy > dom.canvas.height) continue;
-    
     const isMajor = (mm % 50 === 0);
-    const tickLen = isMajor ? 10 : 5;
-    
-    ctx.beginPath();
-    ctx.moveTo(0, sy);
-    ctx.lineTo(tickLen, sy);
-    ctx.stroke();
-    
-    if (isMajor) {
-      ctx.fillText(`${mm}`, 12, sy + 3);
-    }
+    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(isMajor ? 10 : 5, sy); ctx.stroke();
+    if (isMajor) ctx.fillText(`${mm}`, 12, sy + 3);
   }
   
   ctx.restore();
 }
 
-// Interactive zoom & pan handlers on canvas
 function setupCanvasInteractions() {
   dom.canvas.addEventListener('mousedown', (e) => {
     state.isDragging = true;
@@ -659,16 +809,12 @@ function setupCanvasInteractions() {
     state.lastMouseY = e.clientY;
   });
   
-  window.addEventListener('mouseup', () => {
-    state.isDragging = false;
-  });
+  window.addEventListener('mouseup', () => { state.isDragging = false; });
   
   dom.canvas.addEventListener('mousemove', (e) => {
     if (state.isDragging) {
-      const dx = e.clientX - state.lastMouseX;
-      const dy = e.clientY - state.lastMouseY;
-      state.panX += dx;
-      state.panY += dy;
+      state.panX += e.clientX - state.lastMouseX;
+      state.panY += e.clientY - state.lastMouseY;
       state.lastMouseX = e.clientX;
       state.lastMouseY = e.clientY;
       drawCanvas();
@@ -677,32 +823,20 @@ function setupCanvasInteractions() {
   
   dom.canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const zoomFactor = 1.1;
-    
-    // Zoom centered on mouse position
     const rect = dom.canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    
-    // Position of mouse relative to bed before zoom
     const bedX = (mouseX - state.panX) / state.zoom;
     const bedY = (mouseY - state.panY) / state.zoom;
     
-    if (e.deltaY < 0) {
-      state.zoom *= zoomFactor;
-    } else {
-      state.zoom /= zoomFactor;
-    }
+    state.zoom *= e.deltaY < 0 ? 1.1 : 1 / 1.1;
     state.zoom = Math.max(0.5, Math.min(10, state.zoom));
     
-    // Update pan to center on bed coordinates
     state.panX = mouseX - bedX * state.zoom;
     state.panY = mouseY - bedY * state.zoom;
-    
     drawCanvas();
   }, { passive: false });
   
-  // Fit button
   dom.btnCanvasFit.addEventListener('click', () => {
     const scale = Math.min(dom.canvas.width / state.bedSizeX, dom.canvas.height / state.bedSizeY) * 0.9;
     state.zoom = scale;
@@ -711,37 +845,38 @@ function setupCanvasInteractions() {
     drawCanvas();
   });
   
-  // Clear button
   dom.btnCanvasClear.addEventListener('click', () => {
     state.svgData = null;
     state.gcode = '';
+    state.traceFile = null;
     dom.svgInfo.style.display = 'none';
+    if (dom.traceSettings) dom.traceSettings.style.display = 'none';
     dom.btnGenGcode.disabled = true;
     updateStartCutStatus();
     drawCanvas();
-    logToTerminal('Design cleared.', 'info');
+    logManager.system('Design cleared');
   });
 }
 
-// --- Parameter Toggles & G-code Generator ---
+// ══════════════════════════════════════════════════════════════
+// Parameters & G-code Generation
+// ══════════════════════════════════════════════════════════════
 function setupParamHandlers() {
-  // Recalculate G-code if scaling inputs or offset inputs change
   [dom.cfgScale, dom.cfgTolerance, dom.cfgOffsetX, dom.cfgOffsetY].forEach(input => {
-    input.addEventListener('change', () => {
-      // Re-trigger draw
-      drawCanvas();
-    });
+    if (input) input.addEventListener('change', drawCanvas);
   });
   
-  // Material profile selection cards
+  // Bed size changes
+  if (dom.cfgBedX) dom.cfgBedX.addEventListener('change', () => { state.bedSizeX = parseInt(dom.cfgBedX.value) || 300; drawCanvas(); });
+  if (dom.cfgBedY) dom.cfgBedY.addEventListener('change', () => { state.bedSizeY = parseInt(dom.cfgBedY.value) || 300; drawCanvas(); });
+  
+  // Material profile cards
   dom.profileCards.forEach(card => {
     card.addEventListener('click', () => {
       dom.profileCards.forEach(c => c.classList.remove('active'));
       card.classList.add('active');
-      
       const profileName = card.dataset.profile;
       state.currentProfile = profileName;
-      
       const p = state.profileSettings[profileName];
       if (profileName !== 'custom') {
         dom.cfgPressure.value = p.pressure;
@@ -751,56 +886,59 @@ function setupParamHandlers() {
     });
   });
   
-  // Hook manual edits to trigger 'custom' profile active
   [dom.cfgPressure, dom.cfgSpeedLinear, dom.cfgPasses].forEach(input => {
-    input.addEventListener('input', () => {
+    if (input) input.addEventListener('input', () => {
       dom.profileCards.forEach(c => c.classList.remove('active'));
-      document.querySelector('[data-profile="custom"]').classList.add('active');
+      document.querySelector('[data-profile="custom"]')?.classList.add('active');
       state.currentProfile = 'custom';
     });
   });
   
-  // Generate G-code button handler
+  // Tool head change → update labels
+  if (dom.cfgToolHead1) dom.cfgToolHead1.addEventListener('change', updateToolLabels);
+  if (dom.cfgToolHead2) dom.cfgToolHead2.addEventListener('change', updateToolLabels);
+  
+  // Generate G-code
   dom.btnGenGcode.addEventListener('click', () => {
     if (!state.svgData) return;
     
-    const scale = parseFloat(dom.cfgScale.value) || 1.0;
-    const offX = parseFloat(dom.cfgOffsetX.value) || 0;
-    const offY = parseFloat(dom.cfgOffsetY.value) || 0;
-    const pressure = parseInt(dom.cfgPressure.value) || 90;
-    const speed = parseInt(dom.cfgSpeedLinear.value) || 1500;
-    const rapidSpeed = parseInt(dom.cfgSpeedRapid.value) || 3000;
-    const passes = parseInt(dom.cfgPasses.value) || 1;
-    const delay = parseInt(dom.cfgUpDownDelays.value) || 150;
-    
-    // Plotter Configs
-    const kinematics = dom.cfgKinematics ? dom.cfgKinematics.value : 'cartesian';
     const heads = dom.cfgHeads ? parseInt(dom.cfgHeads.value) : 1;
-    const head2X = dom.cfgHead2X ? parseFloat(dom.cfgHead2X.value) : 0;
-    const head2Y = dom.cfgHead2Y ? parseFloat(dom.cfgHead2Y.value) : 0;
-    const toolHead1 = dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife';
-    const toolHead2 = dom.cfgToolHead2 ? dom.cfgToolHead2.value : 'pen';
     
     state.gcode = generateGcode(state.svgData.paths, {
-      feedRateLinear: speed,
-      feedRateRapid: rapidSpeed,
-      bladePressure: pressure,
-      toolDownDelay: delay,
-      toolUpDelay: delay,
-      passCount: passes,
-      scale: scale,
-      offsetX: offX,
-      offsetY: offY,
+      feedRateLinear: parseInt(dom.cfgSpeedLinear.value) || 1500,
+      feedRateRapid: parseInt(dom.cfgSpeedRapid.value) || 3000,
+      bladePressure: parseInt(dom.cfgPressure.value) || 90,
+      toolDownDelay: parseInt(dom.cfgUpDownDelays.value) || 150,
+      toolUpDelay: parseInt(dom.cfgUpDownDelays.value) || 150,
+      passCount: parseInt(dom.cfgPasses.value) || 1,
+      bedSizeX: state.bedSizeX,
+      bedSizeY: state.bedSizeY,
+      scale: parseFloat(dom.cfgScale.value) || 1.0,
+      offsetX: parseFloat(dom.cfgOffsetX.value) || 0,
+      offsetY: parseFloat(dom.cfgOffsetY.value) || 0,
       invertY: true,
       svgSize: { w: state.svgData.width, h: state.svgData.height },
-      kinematics: kinematics,
+      kinematics: dom.cfgKinematics ? dom.cfgKinematics.value : 'cartesian',
       heads: heads,
-      head2Offset: { x: head2X, y: head2Y },
-      toolHead1: toolHead1,
-      toolHead2: toolHead2
+      head2Offset: {
+        x: dom.cfgHead2X ? parseFloat(dom.cfgHead2X.value) : 0,
+        y: dom.cfgHead2Y ? parseFloat(dom.cfgHead2Y.value) : 0
+      },
+      toolHead1: dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife',
+      toolHead2: dom.cfgToolHead2 ? dom.cfgToolHead2.value : 'pen',
+      workflow: state.selectedWorkflow
     });
     
-    logToTerminal(`Generated ${state.gcode.split('\n').length} lines of G-code. Ready to cut.`, 'info');
+    const lineCount = state.gcode.split('\n').length;
+    const est = estimateJobTime(state.svgData.paths, {
+      scale: parseFloat(dom.cfgScale.value) || 1.0,
+      feedRateLinear: parseInt(dom.cfgSpeedLinear.value) || 1500,
+      feedRateRapid: parseInt(dom.cfgSpeedRapid.value) || 3000,
+      passCount: parseInt(dom.cfgPasses.value) || 1
+    });
+    
+    logManager.gcode(`Generated ${lineCount} lines of G-code. Est. time: ~${formatTime(est)}`);
+    showToast(`Generated ${lineCount} lines (~${formatTime(est)})`, 'success', 3000);
     updateStartCutStatus();
     updateGcodePreview();
   });
@@ -811,104 +949,88 @@ function updateStartCutStatus() {
   dom.btnStartCut.disabled = !isReady;
 }
 
-// --- Active Homing & Cutting Control panel ---
+// ══════════════════════════════════════════════════════════════
+// Cut/Draw Control
+// ══════════════════════════════════════════════════════════════
 function setupCutterHandlers() {
-  // Start Cut
   dom.btnStartCut.addEventListener('click', () => {
     if (!state.gcode) return;
-    
-    // Confirm before starting cut
-    if (!confirm('Start cutting? Make sure your material is loaded and the tool is ready.')) return;
+    const verb = getToolAction(dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife').toLowerCase();
+    if (!confirm(`Start ${verb}? Ensure material is loaded and tool is ready.`)) return;
     
     const lines = state.gcode.split('\n');
-    logToTerminal(`Starting cut queue with ${lines.length} lines...`, 'info');
-    
+    logManager.gcode(`Starting job: ${lines.length} lines`);
     state.connection.startSending(lines);
     
-    // Toggle buttons
     dom.btnStartCut.style.display = 'none';
     dom.btnPauseCut.style.display = 'inline-flex';
     dom.btnPauseCut.innerText = 'Pause';
     dom.btnStopCut.style.display = 'inline-flex';
-    
-    // Visual feedback: canvas cutting glow
     dom.canvas.classList.add('cutting-active');
-    
-    // Disable layout options while running
     setInputsDisabled(true);
   });
   
-  // Pause Cut
   dom.btnPauseCut.addEventListener('click', () => {
     if (state.connection.paused) {
-      logToTerminal('Resuming cut segment...', 'info');
+      logManager.gcode('Resuming job...');
       state.connection.resumeSending();
       dom.btnPauseCut.innerText = 'Pause';
     } else {
-      logToTerminal('Pausing cut segment (feed hold)...', 'info');
+      logManager.gcode('Pausing job (feed hold)');
       state.connection.pauseSending();
       dom.btnPauseCut.innerText = 'Resume';
     }
   });
   
-  // Abort Cut
   dom.btnStopCut.addEventListener('click', () => {
-    logToTerminal('Aborting cut queue!', 'info');
+    logManager.gcode('Aborting job!');
     state.connection.stopSending();
     resetCutButtons();
-    
-    // Send reset
-    state.connection.sendRealtimeCharacter(String.fromCharCode(24)); // Ctrl+X Reset
+    state.connection.sendRealtimeCharacter(String.fromCharCode(24));
   });
   
-  // E-stop button
   dom.btnEstop.addEventListener('click', () => {
-    logToTerminal('EMERGENCY STOP PRESSED!', 'info');
-    state.connection.sendRealtimeCharacter('!'); // Feed hold
-    state.connection.sendRealtimeCharacter(String.fromCharCode(24)); // Reset
-    if (state.connection.sending) {
-      state.connection.stopSending();
-    }
+    logManager.error('EMERGENCY STOP');
+    state.connection.sendRealtimeCharacter('!');
+    state.connection.sendRealtimeCharacter(String.fromCharCode(24));
+    if (state.connection.sending) state.connection.stopSending();
     resetCutButtons();
   });
   
-  // Unlock button ($X)
   dom.btnUnlock.addEventListener('click', () => {
-    logToTerminal('Sending Unlock command ($X)...', 'info');
+    logManager.system('Unlock ($X)');
     state.connection.sendLine('$X');
   });
   
-  // Homing button
   dom.btnHome.addEventListener('click', () => {
-    logToTerminal('Initializing Homing Cycle ($H)...', 'info');
+    logManager.system('Homing ($H)');
     state.connection.sendLine('$H');
   });
   
-  // Zero XY
   dom.btnZeroXY.addEventListener('click', () => {
-    logToTerminal('Zeroing work coordinates (G92 X0 Y0)...', 'info');
+    logManager.system('Zero work pos (G92 X0 Y0)');
     state.connection.sendLine('G92 X0 Y0');
   });
   
-  // Test Tool (toggle M3 / M5)
   dom.btnToolTest.addEventListener('click', () => {
     const pressure = parseInt(dom.cfgPressure.value) || 90;
+    const verb = getToolVerb(dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife');
     if (state.toolDown) {
-      logToTerminal('Test Tool: LIFT (M5)', 'info');
+      logManager.system(`Test: ${verb} tool UP (M5)`);
       state.connection.sendLine('M5');
       state.toolDown = false;
     } else {
-      logToTerminal(`Test Tool: DROP (M3 S${pressure})`, 'info');
+      logManager.system(`Test: ${verb} tool DOWN (M3 S${pressure})`);
       state.connection.sendLine(`M3 S${pressure}`);
       state.toolDown = true;
     }
   });
   
-  // Jog Buttons
+  // Jog
   dom.jogXMinus.addEventListener('click', () => sendJogMove(-1, 0));
   dom.jogXPlus.addEventListener('click', () => sendJogMove(1, 0));
-  dom.jogYMinus.addEventListener('click', () => sendJogMove(0, -1)); // Grid Y- is down
-  dom.jogYPlus.addEventListener('click', () => sendJogMove(0, 1));  // Grid Y+ is up
+  dom.jogYMinus.addEventListener('click', () => sendJogMove(0, -1));
+  dom.jogYPlus.addEventListener('click', () => sendJogMove(0, 1));
   
   // Quick utils
   dom.btnCmdStatus.addEventListener('click', () => state.connection.sendRealtimeCharacter('?'));
@@ -922,12 +1044,7 @@ function sendJogMove(dirX, dirY) {
   const speed = 2500;
   const dx = dirX * step;
   const dy = dirY * step;
-  
-  // Invert Y direction if needed to match coordinates
-  // SVG top-left, physical coordinates bottom-left:
-  // Usually, pushing UP button moves motor Y in positive direction. So dy * step is positive.
-  
-  logToTerminal(`Jogging: G91 G0 X${dx} Y${dy} F${speed}`, 'info');
+  logManager.serial(`Jog: G91 G0 X${dx} Y${dy} F${speed}`, 'tx');
   state.connection.sendLine(`G21 G91 G0 X${dx} Y${dy} F${speed} G90`);
 }
 
@@ -940,143 +1057,103 @@ function resetCutButtons() {
 }
 
 function setInputsDisabled(disabled) {
-  dom.dropzone.style.pointerEvents = disabled ? 'none' : 'auto';
-  dom.fileInput.disabled = disabled;
-  dom.cfgScale.disabled = disabled;
-  dom.cfgTolerance.disabled = disabled;
-  dom.cfgOffsetX.disabled = disabled;
-  dom.cfgOffsetY.disabled = disabled;
-  dom.cfgPressure.disabled = disabled;
-  dom.cfgSpeedLinear.disabled = disabled;
-  dom.cfgSpeedRapid.disabled = disabled;
-  dom.cfgPasses.disabled = disabled;
-  dom.cfgUpDownDelays.disabled = disabled;
+  const els = [dom.dropzone, dom.cfgScale, dom.cfgTolerance, dom.cfgOffsetX, dom.cfgOffsetY,
+    dom.cfgPressure, dom.cfgSpeedLinear, dom.cfgSpeedRapid, dom.cfgPasses, dom.cfgUpDownDelays];
+  els.forEach(el => {
+    if (el) {
+      if (el === dom.dropzone) { el.style.pointerEvents = disabled ? 'none' : 'auto'; }
+      else { el.disabled = disabled; }
+    }
+  });
+  if (dom.fileInput) dom.fileInput.disabled = disabled;
 }
 
-// --- Tabs Manager ---
+// ══════════════════════════════════════════════════════════════
+// Tabs
+// ══════════════════════════════════════════════════════════════
 function setupTabHandlers() {
   dom.tabHeaders.forEach(header => {
     header.addEventListener('click', () => {
       const tabId = header.dataset.tab;
       state.activeTab = tabId;
-      
-      // Update header states
       dom.tabHeaders.forEach(h => h.classList.remove('active'));
       header.classList.add('active');
-      
-      // Update pane states
       dom.tabContents.forEach(pane => {
-        if (pane.id === tabId) {
-          pane.classList.add('active');
-        } else {
-          pane.classList.remove('active');
-        }
+        pane.classList.toggle('active', pane.id === tabId);
       });
     });
   });
 }
 
-// --- Console Terminal Handlers ---
+// ══════════════════════════════════════════════════════════════
+// Console
+// ══════════════════════════════════════════════════════════════
 function setupConsoleHandlers() {
-  dom.btnTerminalSend.addEventListener('click', sendConsoleInput);
-  
-  dom.terminalInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      sendConsoleInput();
+  const sendInput = () => {
+    const val = dom.terminalInput.value.trim();
+    if (val) {
+      logToTerminal(val, 'tx');
+      logManager.serial(val, 'tx');
+      state.connection.sendLine(val);
+      dom.terminalInput.value = '';
     }
-  });
+  };
   
+  dom.btnTerminalSend.addEventListener('click', sendInput);
+  dom.terminalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendInput(); });
   dom.btnTerminalClear.addEventListener('click', () => {
     dom.terminalLog.innerHTML = '<div class="terminal-line terminal-info">Console cleared.</div>';
   });
 }
 
-function sendConsoleInput() {
-  const val = dom.terminalInput.value.trim();
-  if (val) {
-    logToTerminal(val, 'tx');
-    state.connection.sendLine(val);
-    dom.terminalInput.value = '';
-  }
-}
-
-// --- Settings ($) System Parser & Form ---
+// ══════════════════════════════════════════════════════════════
+// Settings ($$ System)
+// ══════════════════════════════════════════════════════════════
 function parseSettingsOutput(line) {
-  // Matches "$100=80.000 (steps/mm X)" or "$100=80.000"
   const match = line.match(/^\$(\d+)=([\d\.-]+)(?:\s*\((.*)\))?/);
   if (match) {
     const num = parseInt(match[1]);
     const val = parseFloat(match[2]);
     const desc = match[3] || getSettingDescription(num);
-    
     state.settings[num] = { val, desc };
-    
-    // If we are parsing settings, show the UI
     renderSettingsForm();
   }
 }
 
 function getSettingDescription(num) {
-  const defaults = {
-    100: 'X steps/mm',
-    101: 'Y steps/mm',
-    102: 'Z steps/mm',
-    103: 'C steps/deg',
-    110: 'X max rate, mm/min',
-    111: 'Y max rate, mm/min',
-    112: 'Z max rate, mm/min',
-    113: 'C max rate, deg/min',
-    120: 'Acceleration, mm/s^2',
-    130: 'Junction deviation, mm',
-    140: 'X max travel, mm',
-    141: 'Y max travel, mm',
-    142: 'Z max travel, mm',
-    150: 'Homing seek rate, mm/min',
-    151: 'Homing feed rate, mm/min',
-    152: 'Homing pull-off, mm',
-    160: 'Homing method (0=sensored, 1=sensorless)',
-    161: 'StallGuard threshold (0-255)',
-    162: 'TMC Run Current (mA)',
-    163: 'TMC Hold Current (mA)',
-    164: 'TMC Microstepping',
-    165: 'TMC StealthChop Mode (0=spreadCycle, 1=stealthChop)',
-    170: 'Servo up angle, deg',
-    171: 'Servo down angle, deg',
-    172: 'Servo delay, ms',
-    173: 'Blade pressure, 0-255',
-    174: 'Tool type (0=servo, 1=solenoid, 2=tangential)',
-    180: 'Invert X direction',
-    181: 'Invert Y direction',
-    182: 'Invert Z direction',
-    183: 'Invert C direction',
-    190: 'WiFi mode (0=AP, 1=STA)'
+  const d = {
+    100: 'X steps/mm', 101: 'Y steps/mm', 102: 'Z steps/mm', 103: 'C steps/deg',
+    110: 'X max rate mm/min', 111: 'Y max rate mm/min', 112: 'Z max rate mm/min', 113: 'C max rate deg/min',
+    120: 'Acceleration mm/s²', 130: 'Junction deviation mm',
+    140: 'X max travel mm', 141: 'Y max travel mm', 142: 'Z max travel mm',
+    150: 'Homing seek rate', 151: 'Homing feed rate', 152: 'Homing pull-off mm',
+    160: 'Homing method', 161: 'StallGuard threshold', 162: 'TMC run current mA',
+    163: 'TMC hold current mA', 164: 'TMC microsteps', 165: 'TMC mode',
+    170: 'Servo up angle', 171: 'Servo down angle', 172: 'Servo delay ms',
+    173: 'Blade pressure', 174: 'Tool type', 180: 'Invert X', 181: 'Invert Y',
+    182: 'Invert Z', 183: 'Invert C', 190: 'WiFi mode'
   };
-  return defaults[num] || `Setting $${num}`;
+  return d[num] || `Setting $${num}`;
 }
 
 function renderSettingsForm() {
-  dom.settingsLoading.style.display = 'none';
-  dom.settingsList.style.display = 'flex';
-  dom.settingsActions.style.display = 'grid';
+  if (dom.settingsLoading) dom.settingsLoading.style.display = 'none';
+  if (dom.settingsList) dom.settingsList.style.display = 'flex';
+  if (dom.settingsActions) dom.settingsActions.style.display = 'grid';
   
-  // Clear old list
   dom.settingsList.innerHTML = '';
-  
-  // Sort settings by key
   const keys = Object.keys(state.settings).map(Number).sort((a, b) => a - b);
   
   keys.forEach(key => {
     const setting = state.settings[key];
-    
     const row = document.createElement('div');
     row.className = 'form-group';
-    row.style.marginBottom = '10px';
+    row.style.marginBottom = '8px';
     row.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
-    row.style.paddingBottom = '8px';
+    row.style.paddingBottom = '6px';
     
     const label = document.createElement('label');
     label.innerText = `$${key} — ${setting.desc}`;
-    label.style.fontWeight = '500';
     
     const input = document.createElement('input');
     input.type = 'number';
@@ -1091,67 +1168,68 @@ function renderSettingsForm() {
 }
 
 function setupSettingsHandlers() {
-  dom.btnSettingsLoad.addEventListener('click', () => {
-    state.settings = {};
-    dom.settingsList.innerHTML = '';
-    dom.settingsLoading.innerText = 'Loading settings from machine...';
-    state.connection.sendLine('$$');
-  });
+  if (dom.btnSettingsLoad) {
+    dom.btnSettingsLoad.addEventListener('click', () => {
+      state.settings = {};
+      dom.settingsList.innerHTML = '';
+      if (dom.settingsLoading) dom.settingsLoading.innerText = 'Loading...';
+      logManager.system('Loading machine settings ($$)');
+      state.connection.sendLine('$$');
+    });
+  }
   
-  // Save settings trigger
-  dom.btnSettingsSave.addEventListener('click', () => {
-    const inputs = dom.settingsList.querySelectorAll('input');
-    let commands = [];
-    
-    inputs.forEach(input => {
-      const num = parseInt(input.dataset.settingNum);
-      const oldVal = state.settings[num].val;
-      const newVal = parseFloat(input.value);
+  if (dom.btnSettingsSave) {
+    dom.btnSettingsSave.addEventListener('click', () => {
+      const inputs = dom.settingsList.querySelectorAll('input');
+      let commands = [];
+      inputs.forEach(input => {
+        const num = parseInt(input.dataset.settingNum);
+        const oldVal = state.settings[num].val;
+        const newVal = parseFloat(input.value);
+        if (oldVal !== newVal) {
+          commands.push(`$${num}=${newVal}`);
+          state.settings[num].val = newVal;
+        }
+      });
       
-      if (oldVal !== newVal) {
-        commands.push(`$${num}=${newVal}`);
-        state.settings[num].val = newVal; // update locally
+      if (commands.length === 0) { showToast('No changes to save.', 'info'); return; }
+      
+      logManager.system(`Saving ${commands.length} settings to EEPROM`);
+      commands.forEach(cmd => state.connection.sendLine(cmd));
+      state.connection.sendLine('M500');
+      showToast(`Saved ${commands.length} settings`, 'success');
+    });
+  }
+  
+  if (dom.btnSettingsReset) {
+    dom.btnSettingsReset.addEventListener('click', () => {
+      if (confirm('Restore factory defaults?')) {
+        logManager.system('Factory reset ($RST=*)');
+        state.connection.sendLine('$RST=*');
+        setTimeout(() => { state.settings = {}; state.connection.sendLine('$$'); }, 1000);
       }
     });
-    
-    if (commands.length === 0) {
-      showToast('No settings were modified.', 'info');
-      return;
-    }
-    
-    logToTerminal(`Saving ${commands.length} settings to EEPROM...`, 'info');
-    commands.forEach(cmd => {
-      state.connection.sendLine(cmd);
-    });
-    
-    // Save to EEPROM
-    state.connection.sendLine('M500');
-    showToast(`Saved ${commands.length} settings to EEPROM.`, 'success');
-  });
-  
-  dom.btnSettingsReset.addEventListener('click', () => {
-    if (confirm('Are you sure you want to restore factory default settings?')) {
-      logToTerminal('Restoring factory defaults ($RST=*)...', 'info');
-      state.connection.sendLine('$RST=*');
-      // Reload setting values
-      setTimeout(() => {
-        state.settings = {};
-        state.connection.sendLine('$$');
-      }, 1000);
-    }
-  });
+  }
 }
 
+// ══════════════════════════════════════════════════════════════
+// Plotter Config (head count, tools, drivers)
+// ══════════════════════════════════════════════════════════════
 function setupPlotterConfigHandlers() {
   if (dom.cfgHeads) {
     dom.cfgHeads.addEventListener('change', (e) => {
       const isDual = e.target.value === '2';
-      dom.head2Offsets.style.display = isDual ? 'block' : 'none';
-      dom.groupToolHead2.style.display = isDual ? 'block' : 'none';
+      if (dom.head2Offsets) dom.head2Offsets.style.display = isDual ? 'block' : 'none';
+      if (dom.groupToolHead2) dom.groupToolHead2.style.display = isDual ? 'block' : 'none';
+      if (dom.workflowSelector) dom.workflowSelector.style.display = isDual ? 'block' : 'none';
+      updateToolLabels();
     });
   }
 }
-// --- G-code Preview Panel ---
+
+// ══════════════════════════════════════════════════════════════
+// G-code Preview
+// ══════════════════════════════════════════════════════════════
 function updateGcodePreview() {
   const panel = document.getElementById('gcode-preview-panel');
   const content = document.getElementById('gcode-preview-content');
@@ -1160,119 +1238,301 @@ function updateGcodePreview() {
   
   if (!panel || !content) return;
   
-  if (!state.gcode) {
-    panel.style.display = 'none';
-    return;
-  }
+  if (!state.gcode) { panel.style.display = 'none'; return; }
   
   const lines = state.gcode.split('\n');
-  const totalLines = lines.length;
-  count.innerText = `(${totalLines} lines)`;
+  count.innerText = `(${lines.length} lines)`;
   
-  // Show truncated preview: first 8 lines + ... + last 4 lines
   let previewText;
-  if (totalLines <= 20) {
+  if (lines.length <= 20) {
     previewText = state.gcode;
   } else {
-    const head = lines.slice(0, 8).join('\n');
-    const tail = lines.slice(-4).join('\n');
-    previewText = `${head}\n\n  ... ${totalLines - 12} lines omitted ...\n\n${tail}`;
+    previewText = lines.slice(0, 8).join('\n') + `\n\n  ... ${lines.length - 12} lines ...\n\n` + lines.slice(-4).join('\n');
   }
   
   content.textContent = previewText;
   panel.style.display = 'block';
   
-  // Setup toggle if not already bound
   if (!toggle._bound) {
-    toggle.addEventListener('click', () => {
-      panel.classList.toggle('expanded');
-    });
+    toggle.addEventListener('click', () => panel.classList.toggle('expanded'));
     toggle._bound = true;
   }
 }
 
-// --- G-code Export ---
+// ══════════════════════════════════════════════════════════════
+// G-code Export
+// ══════════════════════════════════════════════════════════════
 function setupGcodeExport() {
-  const btnExport = document.getElementById('btn-export-gcode');
-  if (btnExport) {
-    btnExport.addEventListener('click', () => {
-      if (!state.gcode) {
-        showToast('No G-code generated yet.', 'warning');
-        return;
-      }
-      
+  if (dom.btnExportGcode) {
+    dom.btnExportGcode.addEventListener('click', () => {
+      if (!state.gcode) { showToast('No G-code generated.', 'warning'); return; }
       const blob = new Blob([state.gcode], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `openplotter_${new Date().toISOString().slice(0,10)}.gcode`;
+      a.download = `openplotter_${new Date().toISOString().slice(0, 10)}.gcode`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast('G-code file downloaded.', 'success');
+      logManager.gcode('Exported G-code file');
+      showToast('G-code downloaded.', 'success');
     });
   }
 }
 
-// --- Keyboard Shortcuts ---
+// ══════════════════════════════════════════════════════════════
+// Keyboard Shortcuts
+// ══════════════════════════════════════════════════════════════
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
-    // Don't trigger shortcuts when typing in input fields
     const tag = e.target.tagName.toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
     
-    // Escape = Emergency Stop
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      dom.btnEstop.click();
-      return;
-    }
-    
-    // Space = Pause/Resume cut
-    if (e.key === ' ' && state.sending) {
-      e.preventDefault();
-      dom.btnPauseCut.click();
-      return;
-    }
-    
-    // Arrow keys = Jog
+    if (e.key === 'Escape') { e.preventDefault(); dom.btnEstop.click(); return; }
+    if (e.key === ' ' && state.connection?.sending) { e.preventDefault(); dom.btnPauseCut.click(); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); sendJogMove(0, 1); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); sendJogMove(0, -1); return; }
     if (e.key === 'ArrowLeft') { e.preventDefault(); sendJogMove(-1, 0); return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); sendJogMove(1, 0); return; }
-    
-    // Ctrl+O = Open SVG
-    if (e.ctrlKey && e.key === 'o') {
-      e.preventDefault();
-      dom.fileInput.click();
-      return;
-    }
-    
-    // Ctrl+G = Generate G-code
-    if (e.ctrlKey && e.key === 'g') {
-      e.preventDefault();
-      if (!dom.btnGenGcode.disabled) dom.btnGenGcode.click();
-      return;
-    }
-    
-    // Ctrl+H = Home
-    if (e.ctrlKey && e.key === 'h') {
-      e.preventDefault();
-      dom.btnHome.click();
-      return;
-    }
+    if (e.ctrlKey && e.key === 'o') { e.preventDefault(); dom.fileInput.click(); return; }
+    if (e.ctrlKey && e.key === 'g') { e.preventDefault(); if (!dom.btnGenGcode.disabled) dom.btnGenGcode.click(); return; }
+    if (e.ctrlKey && e.key === 'h') { e.preventDefault(); dom.btnHome.click(); return; }
   });
 }
 
-// --- Beforeunload Guard ---
+// Beforeunload guard
 window.addEventListener('beforeunload', (e) => {
-  if (state.connection && state.connection.sending) {
+  if (state.connection?.sending) {
     e.preventDefault();
-    e.returnValue = 'A cut is in progress. Are you sure you want to leave?';
+    e.returnValue = 'A job is in progress. Leave?';
   }
 });
 
-// --- App Bootstrap ---
+// ══════════════════════════════════════════════════════════════
+// Firmware Flasher
+// ══════════════════════════════════════════════════════════════
+function setupFirmwareFlasher() {
+  const btnFlash = document.getElementById('btn-flash-firmware');
+  const flashStatus = document.getElementById('flash-status');
+  const flashFileInput = document.getElementById('flash-file');
+  const boardSelect = document.getElementById('flash-board-type');
+  const fileSourceSelect = document.getElementById('flash-file-source');
+  const flashTerminal = document.getElementById('flash-terminal');
+  const compileTerminal = document.getElementById('compile-terminal');
+  const btnCompileFlash = document.getElementById('btn-compile-flash');
+  const compileStatus = document.getElementById('compile-status');
+  const btnInstallTools = document.getElementById('btn-install-tools');
+
+  // File source toggle
+  if (fileSourceSelect && flashFileInput) {
+    fileSourceSelect.addEventListener('change', (e) => {
+      flashFileInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+    });
+  }
+
+  // Auto-detect ports
+  const flashPortSelect = document.getElementById('flash-port');
+  const btnDetect = document.getElementById('btn-detect-ports');
+
+  if (btnDetect && flashPortSelect && window.electronAPI) {
+    btnDetect.addEventListener('click', async () => {
+      btnDetect.disabled = true;
+      flashPortSelect.innerHTML = '<option value="">Scanning...</option>';
+      try {
+        const ports = await window.electronAPI.detectBoards();
+        flashPortSelect.innerHTML = '<option value="">Select a Port...</option>';
+        if (ports?.length > 0) {
+          ports.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.path;
+            opt.textContent = `${p.path}${p.hint ? ` — ${p.hint}` : ''}`;
+            if (p.isArduino) opt.selected = true;
+            flashPortSelect.appendChild(opt);
+          });
+        } else {
+          flashPortSelect.innerHTML = '<option value="">No ports found</option>';
+        }
+      } catch (err) {
+        flashPortSelect.innerHTML = '<option value="">Error scanning</option>';
+        logManager.error('Port scan failed', err);
+      } finally {
+        btnDetect.disabled = false;
+      }
+    });
+    btnDetect.click(); // Auto-scan on load
+  }
+
+  // Toolchain status check
+  if (window.electronAPI?.checkToolchain) {
+    (async () => {
+      try {
+        const status = await window.electronAPI.checkToolchain();
+        ['avrdude', 'arduino-cli', 'esptool'].forEach(tool => {
+          const el = document.getElementById(`tc-${tool}`);
+          if (el && status[tool]) {
+            el.textContent = 'Found';
+            el.className = 'toolchain-badge toolchain-found';
+          } else if (el) {
+            el.textContent = 'Not Found';
+            el.className = 'toolchain-badge toolchain-missing';
+          }
+        });
+      } catch (e) {
+        logManager.warn('Could not check toolchain status');
+      }
+    })();
+  } else {
+    // Not in Electron — mark all as N/A
+    ['avrdude', 'arduino-cli', 'esptool'].forEach(tool => {
+      const el = document.getElementById(`tc-${tool}`);
+      if (el) { el.textContent = 'Browser Mode'; el.className = 'toolchain-badge toolchain-missing'; }
+    });
+  }
+
+  // Install missing tools
+  if (btnInstallTools) {
+    btnInstallTools.addEventListener('click', async () => {
+      if (!window.electronAPI?.installToolchain) {
+        showToast('Auto-install only available in desktop app', 'warning');
+        return;
+      }
+      btnInstallTools.disabled = true;
+      btnInstallTools.textContent = 'Installing...';
+      logManager.flash('Installing missing toolchains...');
+      try {
+        const result = await window.electronAPI.installToolchain();
+        logManager.flash(`Toolchain install: ${result}`);
+        showToast(result, 'success');
+      } catch (err) {
+        logManager.error('Toolchain install failed', err);
+        showToast(`Install failed: ${err}`, 'error');
+      } finally {
+        btnInstallTools.disabled = false;
+        btnInstallTools.textContent = 'Auto-Install Missing Tools';
+      }
+    });
+  }
+
+  // Flash progress listener
+  if (window.electronAPI?.onFlashProgress) {
+    window.electronAPI.onFlashProgress((data) => {
+      logManager.cmd(data.trim());
+      if (flashTerminal?.style.display === 'block') {
+        flashTerminal.textContent += data;
+        flashTerminal.scrollTop = flashTerminal.scrollHeight;
+      }
+      if (compileTerminal?.style.display === 'block') {
+        compileTerminal.textContent += data;
+        compileTerminal.scrollTop = compileTerminal.scrollHeight;
+      }
+    });
+  }
+
+  // Compile & Flash
+  if (btnCompileFlash) {
+    btnCompileFlash.addEventListener('click', async () => {
+      if (!window.electronAPI) {
+        if (compileStatus) compileStatus.innerText = 'Error: Desktop app required.';
+        return;
+      }
+      const portName = flashPortSelect?.value || '';
+      if (!portName) {
+        if (compileStatus) compileStatus.innerText = 'Error: Select a port in Flash tab.';
+        return;
+      }
+
+      if (compileTerminal) { compileTerminal.style.display = 'block'; compileTerminal.textContent = ''; }
+      if (compileStatus) compileStatus.innerText = 'Compiling & flashing...';
+      btnCompileFlash.disabled = true;
+      logManager.flash('Starting compile & flash...');
+
+      if (state.connected && state.connection) {
+        await state.connection.disconnect();
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      const config = {
+        kinematics: dom.cfgKinematics?.value || 'cartesian',
+        heads: dom.cfgHeads?.value || '1',
+        tool1: dom.cfgToolHead1?.value || 'dragknife',
+        driverType: document.getElementById('cfg-driver-type')?.value || 'tmc2209',
+        motorCurrent: document.getElementById('cfg-motor-current')?.value || '800',
+        invertX: document.getElementById('cfg-invert-x')?.checked || false,
+        invertY: document.getElementById('cfg-invert-y')?.checked || false,
+        stepsX: document.getElementById('cfg-steps-x')?.value || '80',
+        stepsY: document.getElementById('cfg-steps-y')?.value || '80',
+        maxSpeed: document.getElementById('cfg-max-speed')?.value || '5000',
+        maxAccel: document.getElementById('cfg-max-accel')?.value || '500'
+      };
+
+      try {
+        const result = await window.electronAPI.compileAndFlash(boardSelect?.value || 'mega', portName, config);
+        if (compileStatus) compileStatus.innerText = result;
+        logManager.flash(result);
+        showToast(result, 'success');
+      } catch (error) {
+        if (compileStatus) compileStatus.innerText = 'Error: ' + error;
+        logManager.error('Compile & flash failed', error);
+      } finally {
+        btnCompileFlash.disabled = false;
+      }
+    });
+  }
+
+  // Flash pre-compiled
+  if (btnFlash) {
+    btnFlash.addEventListener('click', async () => {
+      if (!window.electronAPI) {
+        if (flashStatus) flashStatus.innerText = 'Error: Desktop app required.';
+        return;
+      }
+      const comPortName = flashPortSelect?.value || '';
+      if (!comPortName) {
+        if (flashStatus) flashStatus.innerText = 'Error: Select a port.';
+        return;
+      }
+
+      const boardType = boardSelect?.value || 'mega';
+      const fileSource = fileSourceSelect?.value || 'bundled';
+      let hexContent = '';
+
+      if (fileSource === 'custom') {
+        if (!flashFileInput?.files.length) {
+          if (flashStatus) flashStatus.innerText = 'Error: Select a firmware file.';
+          return;
+        }
+        hexContent = await flashFileInput.files[0].text();
+      }
+
+      if (flashTerminal) { flashTerminal.style.display = 'block'; flashTerminal.textContent = ''; }
+      if (flashStatus) flashStatus.innerText = 'Flashing... Do not disconnect!';
+      btnFlash.disabled = true;
+      logManager.flash(`Flashing ${boardType} firmware...`);
+
+      if (state.connected && state.connection) {
+        await state.connection.disconnect();
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      try {
+        const result = await window.electronAPI.flashFirmware(boardType, fileSource, hexContent, comPortName);
+        if (flashStatus) flashStatus.innerText = result;
+        logManager.flash(result);
+        showToast(result, 'success');
+      } catch (error) {
+        if (flashStatus) flashStatus.innerText = 'Error: ' + error;
+        logManager.error('Flash failed', error);
+      } finally {
+        btnFlash.disabled = false;
+      }
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Bootstrap
+// ══════════════════════════════════════════════════════════════
 function init() {
+  setupLogPanel();
   setupConnectionHandlers();
   registerConnectionCallbacks();
   setupFileImporter();
@@ -1285,175 +1545,15 @@ function init() {
   setupPlotterConfigHandlers();
   setupGcodeExport();
   setupKeyboardShortcuts();
+  setupFirmwareFlasher();
   
-  // Initial draw of empty bed
+  // Initial tool label update
+  updateToolLabels();
+  
+  // Initial canvas draw
   drawCanvas();
+  
+  logManager.system('App ready');
 }
 
-// Run init
 init();
-// ==========================================
-// Firmware Flasher Logic
-// ==========================================
-document.addEventListener('DOMContentLoaded', () => {
-  const btnFlash = document.getElementById('btn-flash-firmware');
-  const flashStatus = document.getElementById('flash-status');
-  const flashFileInput = document.getElementById('flash-file');
-  const boardSelect = document.getElementById('flash-board-type');
-  const fileSourceSelect = document.getElementById('flash-file-source');
-  const flashTerminal = document.getElementById('flash-terminal');
-  const compileTerminal = document.getElementById('compile-terminal');
-  const btnCompileFlash = document.getElementById('btn-compile-flash');
-  const compileStatus = document.getElementById('compile-status');
-  
-  if (fileSourceSelect && flashFileInput) {
-    fileSourceSelect.addEventListener('change', (e) => {
-       flashFileInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
-    });
-  }
-
-  const btnDetectPorts = document.getElementById('btn-detect-ports');
-  const flashPortSelect = document.getElementById('flash-port');
-
-  if (btnDetectPorts && flashPortSelect && window.electronAPI) {
-    btnDetectPorts.addEventListener('click', async () => {
-      btnDetectPorts.disabled = true;
-      flashPortSelect.innerHTML = '<option value="">Detecting...</option>';
-      try {
-        const ports = await window.electronAPI.detectBoards();
-        flashPortSelect.innerHTML = '<option value="">Select a COM Port...</option>';
-        if (ports && ports.length > 0) {
-          ports.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p.path;
-            opt.textContent = `${p.path} - ${p.friendlyName || 'Unknown Device'}`;
-            flashPortSelect.appendChild(opt);
-          });
-        } else {
-          flashPortSelect.innerHTML = '<option value="">No ports found.</option>';
-        }
-      } catch (err) {
-        flashPortSelect.innerHTML = '<option value="">Error detecting ports</option>';
-      } finally {
-        btnDetectPorts.disabled = false;
-      }
-    });
-    // Auto-detect on load
-    btnDetectPorts.click();
-  }
-
-  // Setup terminal listener
-  if (window.electronAPI && window.electronAPI.onFlashProgress) {
-    window.electronAPI.onFlashProgress((data) => {
-      if (flashTerminal && flashTerminal.style.display === 'block') {
-         flashTerminal.textContent += data;
-         flashTerminal.scrollTop = flashTerminal.scrollHeight;
-      }
-      if (compileTerminal && compileTerminal.style.display === 'block') {
-         compileTerminal.textContent += data;
-         compileTerminal.scrollTop = compileTerminal.scrollHeight;
-      }
-    });
-  }
-
-  if (btnCompileFlash) {
-     btnCompileFlash.addEventListener('click', async () => {
-        if (!window.electronAPI) {
-          compileStatus.innerText = "Error: Not running in Electron desktop app.";
-          return;
-        }
-        
-        const portName = document.getElementById('flash-port') ? document.getElementById('flash-port').value : "";
-        if (!portName) {
-           compileStatus.innerText = "Error: Please select a Target Port in the Firmware tab.";
-           return;
-        }
-
-        compileTerminal.style.display = 'block';
-        compileTerminal.textContent = '';
-        compileStatus.innerText = "Compiling and Flashing... Please wait.";
-        btnCompileFlash.disabled = true;
-
-        // Disconnect active serial/websocket connection before flashing
-        if (state.connected && state.connection) {
-           await state.connection.disconnect();
-           // Wait a tiny bit for locks to clear
-           await new Promise(r => setTimeout(r, 500));
-        }
-
-        const config = {
-           kinematics: document.getElementById('cfg-kinematics') ? document.getElementById('cfg-kinematics').value : 'cartesian',
-           heads: document.getElementById('cfg-heads') ? document.getElementById('cfg-heads').value : '1',
-           tool1: document.getElementById('cfg-tool-head1') ? document.getElementById('cfg-tool-head1').value : 'drag_knife',
-           driverType: document.getElementById('cfg-driver-type') ? document.getElementById('cfg-driver-type').value : 'tmc2209',
-           motorCurrent: document.getElementById('cfg-motor-current') ? document.getElementById('cfg-motor-current').value : '800',
-           invertX: document.getElementById('cfg-invert-x') ? document.getElementById('cfg-invert-x').checked : false,
-           invertY: document.getElementById('cfg-invert-y') ? document.getElementById('cfg-invert-y').checked : false,
-           stepsX: document.getElementById('cfg-steps-x') ? document.getElementById('cfg-steps-x').value : '80',
-           stepsY: document.getElementById('cfg-steps-y') ? document.getElementById('cfg-steps-y').value : '80',
-           maxSpeed: document.getElementById('cfg-max-speed') ? document.getElementById('cfg-max-speed').value : '5000',
-           maxAccel: document.getElementById('cfg-max-accel') ? document.getElementById('cfg-max-accel').value : '500'
-        };
-
-        const boardType = boardSelect ? boardSelect.value : 'mega';
-
-        try {
-          const result = await window.electronAPI.compileAndFlash(boardType, portName, config);
-          compileStatus.innerText = result;
-        } catch (error) {
-          compileStatus.innerText = "Error: " + error;
-        } finally {
-          btnCompileFlash.disabled = false;
-        }
-     });
-  }
-
-  if (btnFlash) {
-    btnFlash.addEventListener('click', async () => {
-      if (!window.electronAPI) {
-        flashStatus.innerText = "Error: Not running in Electron desktop app.";
-        return;
-      }
-      
-      const comPortName = document.getElementById('flash-port') ? document.getElementById('flash-port').value : "";
-      if (!comPortName) {
-         flashStatus.innerText = "Error: Please select a target COM port.";
-         return;
-      }
-
-      const boardType = boardSelect.value;
-      const fileSource = fileSourceSelect.value;
-      let hexContent = "";
-
-      if (fileSource === 'custom') {
-        if (flashFileInput.files.length === 0) {
-          flashStatus.innerText = "Error: Please select a custom .hex file.";
-          return;
-        }
-        const file = flashFileInput.files[0];
-        hexContent = await file.text();
-      }
-
-      flashTerminal.style.display = 'block';
-      flashTerminal.textContent = '';
-      flashStatus.innerText = "Flashing... Do not disconnect the board!";
-      btnFlash.disabled = true;
-      
-      // Disconnect active serial/websocket connection before flashing
-      if (state.connected && state.connection) {
-         await state.connection.disconnect();
-         // Wait a tiny bit for locks to clear
-         await new Promise(r => setTimeout(r, 500));
-      }
-      
-      try {
-        const result = await window.electronAPI.flashFirmware(boardType, fileSource, hexContent, comPortName);
-        flashStatus.innerText = result;
-      } catch (error) {
-        flashStatus.innerText = "Error: " + error;
-      } finally {
-        btnFlash.disabled = false;
-      }
-    });
-  }
-});
