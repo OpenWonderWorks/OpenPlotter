@@ -646,8 +646,7 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
     'compile',
     '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
     ...(advanced.cleanBuild ? ['--clean'] : []),
-    sketchPath,
-    '--verbose',
+    sketchPath
   ];
 
   sendProgress(`\n── Compiling ──`);
@@ -678,8 +677,7 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
     '--fqbn', boardDef.fqbn || 'arduino:avr:mega',
     '--port', port,
     ...(advanced.verifyUpload ? ['--verify'] : []),
-    sketchPath,
-    '--verbose',
+    sketchPath
   ];
 
   sendProgress(`\n── Uploading ──`);
