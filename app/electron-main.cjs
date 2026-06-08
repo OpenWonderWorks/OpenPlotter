@@ -494,7 +494,7 @@ async function flashWithEsptool(boardDef, fileSource, hexContent, port, sendProg
   }
 
   const args = [
-    '--chip', boardType === 'esp32s3' ? 'esp32s3' : 'esp32',
+    '--chip', boardDef.fqbn && boardDef.fqbn.includes('esp32s3') ? 'esp32s3' : 'esp32',
     '--port', port,
     '--baud', String(boardDef.flashBaud || 921600),
     'write_flash',

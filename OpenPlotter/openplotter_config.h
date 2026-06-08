@@ -185,7 +185,7 @@
 // Enable pin logic (true = active LOW, false = active HIGH)
 #define STEPPER_ENABLE_ACTIVE_LOW   true
 
-// ── TMC2209 UART Configuration ──────────────────────────────────────────────
+// ── TMC UART & SPI Configuration ──────────────────────────────────────────────
 #ifdef HAS_TMC_UART
     #define TMC_BAUD_RATE           115200
     #define TMC_RUN_CURRENT_MA      800       // mA — running current per motor
@@ -197,6 +197,25 @@
     #define TMC_Z_ADDR              2         // UART address for Z driver
     #define TMC_C_ADDR              3         // UART address for C driver
 #endif
+
+// TMC SPI Settings (for TMC2130, TMC5160)
+// Enable this macro if you are using SPI drivers on compatible boards
+// #define HAS_TMC_SPI
+#ifdef HAS_TMC_SPI
+    #define TMC_SPI_RUN_CURRENT_MA  1500      // mA — higher current for TMC5160
+    #define TMC_SPI_HOLD_CURRENT_MA 500
+    #define TMC_SPI_MICROSTEPS      32
+    #define TMC_SPI_STEALTHCHOP     false     // spreadCycle recommended for high-power NEMA23/TMC5160
+    // Sense resistors: default is 0.075 for TMC5160, 0.11 for TMC2130
+    #define TMC_SPI_RSENSE          0.075f    
+#endif
+
+// ── Power Supply Configuration ──────────────────────────────────────────────
+// Define your power supply voltage (e.g. 12, 24, 36) for tuning motor drivers
+#define POWER_SUPPLY_VOLTAGE        24.0f     // Default: 24V (e.g., 24V 360W PSU)
+#define POWER_SUPPLY_MAX_WATTAGE    360       // Watts
+// Enable load balancing software limits if current draw exceeds PSU limits
+#define POWER_LOAD_BALANCING        true      
 
 // ── Communication ───────────────────────────────────────────────────────────
 #define SERIAL_BAUD_RATE            115200
