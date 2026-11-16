@@ -1,0 +1,194 @@
+name: Release builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build (for example v3.2.3)
+        required: true
+        type: string
+permissions:
+  contents: read
+
+jobs:
+  validate-tag:
+    name: Validate source tag
+    runs-on: ubuntu-latest
+    outputs:
+      source_commit: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - id: source
+        name: Confirm exact version tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Expected a version tag such as v3.2.3" >&2
+            exit 1
+          fi
+          git tag --points-at HEAD | grep -Fx -- "$RELEASE_TAG" >/dev/null
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    name: Desktop build (${{ matrix.os }})
+    needs: validate-tag
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows
+            runner: windows-latest
+            glob: app/dist-desktop/*.exe
+          - os: macos
+            runner: macos-latest
+            glob: app/dist-desktop/*.dmg
+          - os: linux
+            runner: ubuntu-latest
+            glob: app/dist-desktop/*.AppImage
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.0
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+      - name: Build desktop package
+        working-directory: app
+        run: npm run electron:build
+      - name: Upload desktop package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenPlotter-desktop-${{ matrix.os }}
+          path: ${{ matrix.glob }}
+          if-no-files-found: error
+          retention-days: 30
+
+  firmware:
+    name: Firmware build (${{ matrix.environment }})
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.environment != 'mega_ramps14' && matrix.environment != 'native' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - native
+          - mega_ramps14
+          - mega
+          - nano
+          - esp32
+          - mega_hybrid
+          - esp32_bridge
+          - nano_hybrid
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PlatformIO
+        run: python -m pip install platformio
+      - name: Compile firmware
+        if: matrix.environment != 'native'
+        run: pio run -d OpenPlotter -e "${{ matrix.environment }}"
+      - name: Run native firmware tests
+        if: matrix.environment == 'native'
+        run: sh OpenPlotter/test/run-native.sh
+      - name: Package compiled firmware
+        if: matrix.environment != 'native'
+        env:
+          FIRMWARE_ENVIRONMENT: ${{ matrix.environment }}
+        run: |
+          set -euo pipefail
+          build_dir="OpenPlotter/.pio/build/$FIRMWARE_ENVIRONMENT"
+          package_dir="release-payload/OpenPlotter-firmware-$FIRMWARE_ENVIRONMENT"
+          mkdir -p "$package_dir"
+          find "$build_dir" -maxdepth 1 -type f \( -name 'firmware.hex' -o -name 'firmware.bin' -o -name 'firmware.elf' \) -exec cp {} "$package_dir/" \;
+          if ! find "$package_dir" -maxdepth 1 -type f | grep -q .; then
+            echo "No firmware binary found for $FIRMWARE_ENVIRONMENT" >&2
+            exit 1
+          fi
+          cp OpenPlotter/platformio.ini "$package_dir/"
+          cp OpenPlotter/openplotter_config.h "$package_dir/"
+          cat > "$package_dir/BUILD-INFO.txt" <<EOF
+          PlatformIO environment: $FIRMWARE_ENVIRONMENT
+          Source tag: ${{ inputs.tag }}
+          Source commit: $(git rev-parse HEAD)
+          Hardware validation: not performed by this compile job
+          EOF
+          PACKAGE_DIR="$package_dir" python - <<'PY'
+          import os
+          from pathlib import Path
+          from zipfile import ZIP_DEFLATED, ZipFile
+
+          package = Path(os.environ["PACKAGE_DIR"])
+          archive = Path("release-payload") / f"{package.name}.zip"
+          with ZipFile(archive, "w", ZIP_DEFLATED) as output:
+              for path in sorted(package.rglob("*")):
+                  if path.is_file():
+                      output.write(path, path.relative_to(package.parent))
+          PY
+      - name: Upload firmware package
+        if: success() && matrix.environment != 'native'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenPlotter-firmware-${{ matrix.environment }}
+          path: release-payload/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  candidate-assets:
+    name: Assemble release candidate
+    needs: [validate-tag, desktop, firmware]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download successful build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: OpenPlotter-*
+          path: assets
+          merge-multiple: true
+      - name: Require desktop and primary firmware assets, then checksum
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ needs.validate-tag.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          test -n "$(find assets -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          test -n "$(find assets -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          test -n "$(find assets -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -f "assets/OpenPlotter-firmware-mega_ramps14.zip"
+          printf 'Source tag: %s\n' "$RELEASE_TAG" > assets/SOURCE-TAG.txt
+          printf 'Source commit: %s\n' "$SOURCE_COMMIT" > assets/SOURCE-COMMIT.txt
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          assets = Path("assets")
+          files = sorted(path for path in assets.iterdir()
+                         if path.is_file() and path.name != "SHA256SUMS.txt")
+          lines = []
+          for path in files:
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              lines.append(f"{digest}  {path.name}\n")
+          (assets / "SHA256SUMS.txt").write_text("".join(lines), encoding="utf-8")
+          PY
+      - name: Upload release candidate assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenPlotter-release-candidate
+          path: assets/*
+          if-no-files-found: error
+          retention-days: 30

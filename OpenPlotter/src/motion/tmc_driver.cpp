@@ -7,6 +7,8 @@
 #include "tmc_driver.h"
 #include "../../openplotter_config.h"
 #include "../utils/logger.h"
+
+#if defined(HAS_TMC_UART) || defined(HAS_TMC_SPI)
 #include "../hal/hal.h"
 #include "../system/settings.h"
 #include <SPI.h>
@@ -284,3 +286,34 @@ void updateTmcStealthChop(bool enable) {
         }
     }
 }
+
+#else
+
+bool isSensorlessCapable(uint8_t axis) {
+    (void)axis;
+    return false;
+}
+
+void initTmcDrivers() {
+    LOG_WARN("TMC control is not enabled in this board profile");
+}
+
+void configureTmcForHoming(uint8_t axis, bool enableHoming) {
+    (void)axis;
+    (void)enableHoming;
+}
+
+void updateTmcCurrents(uint16_t runCurrentMa, uint16_t holdCurrentMa) {
+    (void)runCurrentMa;
+    (void)holdCurrentMa;
+}
+
+void updateTmcMicrosteps(uint16_t microsteps) {
+    (void)microsteps;
+}
+
+void updateTmcStealthChop(bool enable) {
+    (void)enable;
+}
+
+#endif

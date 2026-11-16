@@ -162,6 +162,9 @@ public:
      */
     void reset();
 
+    /** Discard queued blocks and segments without assigning a new position. */
+    void discardPendingMotion();
+
     /**
      * Update machine settings.
      */

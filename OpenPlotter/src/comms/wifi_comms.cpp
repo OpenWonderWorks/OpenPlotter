@@ -43,6 +43,7 @@ static AsyncWebSocket* _ws = nullptr;
 // ── WebSocket receive buffer ────────────────────────────────────────────────
 static char _wsRxBuffer[GCODE_LINE_MAX_LENGTH + 1];
 static volatile bool _wsLineReady = false;
+static volatile char _wsRealtimeChar = 0;
 
 // ── WebSocket event handler ─────────────────────────────────────────────────
 static void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
@@ -62,6 +63,11 @@ static void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
             AwsFrameInfo* info = (AwsFrameInfo*)arg;
             if (info->final && info->index == 0 && info->len == len &&
                 info->opcode == WS_TEXT) {
+                if (len == 1 && (data[0] == '?' || data[0] == '!' ||
+                                 data[0] == '~' || data[0] == 0x18)) {
+                    _wsRealtimeChar = (char)data[0];
+                    break;
+                }
                 // Complete text message received
                 size_t copyLen = (len < GCODE_LINE_MAX_LENGTH) ? len : GCODE_LINE_MAX_LENGTH;
                 memcpy(_wsRxBuffer, data, copyLen);
@@ -204,6 +210,12 @@ char* WifiComms::readLine() {
         return _lineBuffer;
     }
     return nullptr;
+}
+
+char WifiComms::checkRealtimeCommand() {
+    char command = _wsRealtimeChar;
+    _wsRealtimeChar = 0;
+    return command;
 }
 
 // ============================================================================

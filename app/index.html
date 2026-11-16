@@ -324,7 +324,7 @@
             <label for="cfg-heads">Number of Tool Heads</label>
             <select id="cfg-heads">
               <option value="1">1 Head</option>
-              <option value="2">2 Heads</option>
+              <option value="2" disabled>2 Heads (not supported by firmware)</option>
             </select>
           </div>
 
@@ -447,14 +447,15 @@
           <div class="form-group">
             <label for="flash-board-type">Target Board</label>
             <select id="flash-board-type">
-              <option value="mega">Arduino Mega 2560</option>
-              <option value="nano-new">Arduino Nano (New Bootloader)</option>
-              <option value="nano-old">Arduino Nano (Old Bootloader)</option>
-              <option value="uno">Arduino Uno</option>
+              <option value="mega">Mega 2560 + RAMPS 1.4</option>
+              <option value="mega-standalone">Mega 2560 (standalone)</option>
+              <option value="nano-new" disabled>Arduino Nano (exceeds current firmware memory limits)</option>
+              <option value="nano-old" disabled>Arduino Nano (exceeds current firmware memory limits)</option>
+              <option value="uno" disabled>Arduino Uno (not supported by firmware)</option>
               <option value="esp32">ESP32 DevKit</option>
-              <option value="esp32s3">ESP32-S3</option>
-              <option value="stm32">STM32 BluePill</option>
-              <option value="pico">Raspberry Pi Pico</option>
+              <option value="esp32s3" disabled>ESP32-S3 (not supported by firmware)</option>
+              <option value="stm32" disabled>STM32 BluePill (not supported by firmware)</option>
+              <option value="pico" disabled>Raspberry Pi Pico (not supported by firmware)</option>
             </select>
           </div>
 

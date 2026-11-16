@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const util = require('util');
 const execAsync = util.promisify(exec);
+const { getCompileBoardProfile } = require('./firmware-targets.cjs');
 
 const getFirmwareDir = () => app.isPackaged ? path.join(process.resourcesPath, 'OpenPlotter') : path.join(__dirname, '..', 'OpenPlotter');
 
@@ -194,7 +195,16 @@ function findAvrdudeConf(avrdudePath) {
 // ══════════════════════════════════════════════════════════════
 const BOARD_DEFS = {
   mega: {
-    name: 'Arduino Mega 2560',
+    name: 'Mega 2560 + RAMPS 1.4',
+    mcu: 'atmega2560',
+    programmer: 'wiring',
+    baudRate: 115200,
+    fqbn: 'arduino:avr:mega',
+    flashTool: 'avrdude',
+    protocol: 'wiring',
+  },
+  'mega-standalone': {
+    name: 'Arduino Mega 2560 (standalone)',
     mcu: 'atmega2560',
     programmer: 'wiring',
     baudRate: 115200,
@@ -530,6 +540,10 @@ async function flashWithEsptool(boardDef, fileSource, hexContent, port, sendProg
 ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, config, advanced = {} }) => {
   const boardDef = BOARD_DEFS[boardType];
   if (!boardDef) throw new Error(`Unknown board: ${boardType}`);
+  const profile = getCompileBoardProfile(boardType);
+  if (!profile) {
+    throw new Error(`${boardDef.name} is not supported by the current firmware source.`);
+  }
 
   const sendProgress = (msg) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -575,18 +589,15 @@ ipcMain.handle('compile-and-flash-firmware', async (event, { boardType, port, co
     let modified = fs.readFileSync(configPath, 'utf-8');
 
     // Set board profile based on boardType
-    const boardProfiles = {
-      mega: 'BOARD_MEGA_RAMPS14',
-      'nano-new': 'BOARD_NANO_STANDALONE',
-      'nano-old': 'BOARD_NANO_STANDALONE',
-      uno: 'BOARD_MEGA_STANDALONE',
-      esp32: 'BOARD_ESP32_STANDALONE',
-    };
-
-    const profile = boardProfiles[boardType] || 'BOARD_MEGA_RAMPS14';
-
     // Uncomment the right board profile, comment out the rest
-    Object.values(boardProfiles).forEach(bp => {
+    Object.values({
+      mega: 'BOARD_MEGA_RAMPS14',
+      'mega-standalone': 'BOARD_MEGA_STANDALONE',
+      nano: 'BOARD_NANO_STANDALONE',
+      esp32: 'BOARD_ESP32_STANDALONE',
+      hybridMega: 'BOARD_MEGA_ESP32_HYBRID',
+      hybridNano: 'BOARD_NANO_ESP32_HYBRID'
+    }).forEach(bp => {
       modified = modified.replace(new RegExp(`^(\\s*)#define ${bp}`, 'm'), `$1// #define ${bp}`);
       modified = modified.replace(new RegExp(`^(\\s*)//\\s*#define ${bp}`, 'm'), `$1// #define ${bp}`);
     });

@@ -62,7 +62,7 @@ private:
 
     // Validation
     GCodeError validateGCode(uint8_t code);
-    GCodeError validateMCode(uint8_t code);
+    GCodeError validateMCode(uint16_t code);
     GCodeError validateBlock(const GCodeBlock& block);
 
     // Apply modal updates

@@ -113,6 +113,11 @@ void Stepper::emergencyStop() {
     hal->stepTimerStop();
     hal->segmentTimerStop();
 
+    // Never leave stale queued motion available to a later resume/start.
+    // Position is intentionally preserved as an estimate; Safety latches an
+    // alarm and requires homing after an emergency stop.
+    if (_planner) _planner->discardPendingMotion();
+
     // Reset all step pins LOW
     hal->digitalWrite(X_STEP_PIN, false);
     hal->digitalWrite(Y_STEP_PIN, false);

@@ -10,6 +10,7 @@
 #include "../hal/hal.h"
 #include "../motion/stepper.h"
 #include "../motion/planner.h"
+#include "../system/settings.h"
 #include "../../openplotter_config.h"
 #include <stdint.h>
 
@@ -46,7 +47,7 @@ public:
     /**
      * Initialize homing with references to stepper and planner.
      */
-    void init(Stepper* stepper, Planner* planner);
+    void init(Stepper* stepper, Planner* planner, Settings* settings);
 
     /**
      * Execute a full homing cycle for all configured axes.
@@ -77,6 +78,7 @@ public:
      * Get current homing state.
      */
     HomingState getState() const { return _state; }
+    uint8_t currentAxis() const { return _activeAxis; }
 
     /**
      * Read current limit switch states.
@@ -94,6 +96,9 @@ public:
      */
     void setSgHomingCurrent(uint16_t current) { _sgHomingCurrent = current; }
 
+    /** Poll safety between blocking homing steps; false aborts the sequence. */
+    void setSafetyPollCallback(bool (*callback)()) { _safetyPoll = callback; }
+
     /**
      * Abort current homing cycle.
      */
@@ -102,10 +107,13 @@ public:
 private:
     Stepper* _stepper = nullptr;
     Planner* _planner = nullptr;
+    Settings* _settings = nullptr;
     HomingMethod _method = HomingMethod::SENSORED;
     HomingState _state = HomingState::IDLE;
     bool _isHomed = false;
     bool _aborted = false;
+    uint8_t _activeAxis = 0xFF;
+    bool (*_safetyPoll)() = nullptr;
 
     // Sensorless homing parameters
     uint8_t _sgThreshold = DEFAULT_SG_THRESHOLD;
