@@ -25,8 +25,10 @@
 #include "homing.h"
 #include "../utils/logger.h"
 #include "../motion/tmc_driver.h"
+#include "../system/safety_checks.h"
 #include "../../openplotter_config.h"
 #include <string.h>
+#include <math.h>
 
 // ============================================================================
 // Constructor & Init
@@ -34,9 +36,10 @@
 
 HomingManager::HomingManager() {}
 
-void HomingManager::init(Stepper* stepper, Planner* planner) {
+void HomingManager::init(Stepper* stepper, Planner* planner, Settings* settings) {
     _stepper = stepper;
     _planner = planner;
+    _settings = settings;
 
     // Configure endstop pins as inputs
     hal->pinMode(X_MIN_PIN, LIMIT_SWITCH_PULLUP
@@ -46,6 +49,18 @@ void HomingManager::init(Stepper* stepper, Planner* planner) {
 
     #ifdef Z_MIN_PIN
     hal->pinMode(Z_MIN_PIN, LIMIT_SWITCH_PULLUP
+                 ? PinMode::INPUT_PULLUP_MODE : PinMode::INPUT_MODE);
+    #endif
+    #ifdef X_MAX_PIN
+    hal->pinMode(X_MAX_PIN, LIMIT_SWITCH_PULLUP
+                 ? PinMode::INPUT_PULLUP_MODE : PinMode::INPUT_MODE);
+    #endif
+    #ifdef Y_MAX_PIN
+    hal->pinMode(Y_MAX_PIN, LIMIT_SWITCH_PULLUP
+                 ? PinMode::INPUT_PULLUP_MODE : PinMode::INPUT_MODE);
+    #endif
+    #ifdef Z_MAX_PIN
+    hal->pinMode(Z_MAX_PIN, LIMIT_SWITCH_PULLUP
                  ? PinMode::INPUT_PULLUP_MODE : PinMode::INPUT_MODE);
     #endif
 }
@@ -118,12 +133,12 @@ bool HomingManager::getHomeDir(uint8_t axis) {
 
 float HomingManager::getSeekRate(uint8_t axis) {
     (void)axis;
-    return DEFAULT_HOMING_SEEK_RATE; // mm/min
+    return _settings ? _settings->homingSeekRate() : DEFAULT_HOMING_SEEK_RATE;
 }
 
 float HomingManager::getFeedRate(uint8_t axis) {
     (void)axis;
-    return DEFAULT_HOMING_FEED_RATE; // mm/min
+    return _settings ? _settings->homingFeedRate() : DEFAULT_HOMING_FEED_RATE;
 }
 
 // ============================================================================
@@ -133,22 +148,20 @@ float HomingManager::getFeedRate(uint8_t axis) {
 uint8_t HomingManager::readEndstops() {
     uint8_t status = 0;
 
-    bool xMin = hal->digitalRead(X_MIN_PIN);
-    bool yMin = hal->digitalRead(Y_MIN_PIN);
-
-    // If switches are normally closed, invert the reading
-    if (LIMIT_SWITCH_NC) {
-        xMin = !xMin;
-        yMin = !yMin;
-    }
-
-    if (xMin) status |= 0x01;
-    if (yMin) status |= 0x04;
+    if (isLimitTriggered(hal->digitalRead(X_MIN_PIN), LIMIT_SWITCH_NC)) status |= 0x01;
+    if (isLimitTriggered(hal->digitalRead(Y_MIN_PIN), LIMIT_SWITCH_NC)) status |= 0x04;
 
     #ifdef Z_MIN_PIN
-    bool zMin = hal->digitalRead(Z_MIN_PIN);
-    if (LIMIT_SWITCH_NC) zMin = !zMin;
-    if (zMin) status |= 0x10;
+    if (isLimitTriggered(hal->digitalRead(Z_MIN_PIN), LIMIT_SWITCH_NC)) status |= 0x10;
+    #endif
+    #ifdef X_MAX_PIN
+    if (isLimitTriggered(hal->digitalRead(X_MAX_PIN), LIMIT_SWITCH_NC)) status |= 0x02;
+    #endif
+    #ifdef Y_MAX_PIN
+    if (isLimitTriggered(hal->digitalRead(Y_MAX_PIN), LIMIT_SWITCH_NC)) status |= 0x08;
+    #endif
+    #ifdef Z_MAX_PIN
+    if (isLimitTriggered(hal->digitalRead(Z_MAX_PIN), LIMIT_SWITCH_NC)) status |= 0x20;
     #endif
 
     return status;
@@ -161,6 +174,7 @@ uint8_t HomingManager::readEndstops() {
 HomingResult HomingManager::homeAll() {
     _aborted = false;
     _isHomed = false;
+    _activeAxis = 0xFF;
 
     LOG_INFO("Homing: Starting (%s mode)",
              _method == HomingMethod::SENSORED ? "sensored" : "sensorless");
@@ -200,6 +214,7 @@ HomingResult HomingManager::homeAll() {
 
 HomingResult HomingManager::homeAxis(uint8_t axis) {
     if (axis >= 4) return HomingResult::SWITCH_NOT_FOUND;
+    _activeAxis = axis;
 
     const char* axisNames[] = {"X", "Y", "Z", "C"};
     LOG_INFO("Homing: Axis %s", axisNames[axis]);
@@ -244,16 +259,28 @@ void HomingManager::stepAxis(uint8_t axis, bool direction, float speedMmPerSec,
     hal->delayUs(STEP_IDLE_DELAY_MS);
 
     // Calculate step interval in microseconds
-    float stepsPerMm = DEFAULT_STEPS_PER_MM_X; // TODO: per-axis from settings
-    if (axis == 1) stepsPerMm = DEFAULT_STEPS_PER_MM_Y;
-    if (axis == 2) stepsPerMm = DEFAULT_STEPS_PER_MM_Z;
+    float stepsPerMm = _settings ? _settings->stepsPerMm(axis) : DEFAULT_STEPS_PER_MM_X;
+    if (!_settings && axis == 1) stepsPerMm = DEFAULT_STEPS_PER_MM_Y;
+    if (!_settings && axis == 2) stepsPerMm = DEFAULT_STEPS_PER_MM_Z;
 
     float stepsPerSec = speedMmPerSec * stepsPerMm;
-    uint32_t stepIntervalUs = (uint32_t)(1000000.0f / stepsPerSec);
+    if (!isfinite(stepsPerSec) || stepsPerSec <= 0.0f) {
+        _aborted = true;
+        return;
+    }
+    float requestedIntervalUs = 1000000.0f / stepsPerSec;
+    if (!isfinite(requestedIntervalUs) || requestedIntervalUs > 60000000.0f) {
+        requestedIntervalUs = 60000000.0f;
+    }
+    uint32_t stepIntervalUs = (uint32_t)requestedIntervalUs;
     if (stepIntervalUs < 20) stepIntervalUs = 20; // Minimum 20µs between steps
 
     // Step loop
     for (uint32_t i = 0; i < maxSteps; i++) {
+        if (_safetyPoll && !_safetyPoll()) {
+            _aborted = true;
+            return;
+        }
         if (_aborted) return;
 
         // Check stop condition
@@ -266,7 +293,16 @@ void HomingManager::stepAxis(uint8_t axis, bool direction, float speedMmPerSec,
         hal->digitalWrite(stepPin, true);
         hal->delayUs(STEP_PULSE_WIDTH_US);
         hal->digitalWrite(stepPin, false);
-        hal->delayUs(stepIntervalUs - STEP_PULSE_WIDTH_US);
+        uint32_t remainingUs = stepIntervalUs - STEP_PULSE_WIDTH_US;
+        while (remainingUs > 0) {
+            uint16_t delayChunkUs = remainingUs > 1000 ? 1000 : (uint16_t)remainingUs;
+            hal->delayUs(delayChunkUs);
+            remainingUs -= delayChunkUs;
+            if (_safetyPoll && !_safetyPoll()) {
+                _aborted = true;
+                return;
+            }
+        }
     }
 }
 
@@ -277,14 +313,7 @@ void HomingManager::stepAxis(uint8_t axis, bool direction, float speedMmPerSec,
 // Stop condition: limit switch triggered
 static bool limitSwitchTriggered(uint8_t axis, void* ctx) {
     HomingManager* homing = (HomingManager*)ctx;
-    uint8_t endstops = homing->readEndstops();
-
-    switch (axis) {
-        case 0: return (endstops & 0x01) != 0; // X_MIN
-        case 1: return (endstops & 0x04) != 0; // Y_MIN
-        case 2: return (endstops & 0x10) != 0; // Z_MIN
-        default: return false;
-    }
+    return isHomeSwitchActive(homing->readEndstops(), axis);
 }
 
 // Stop condition: limit switch NOT triggered (for pull-off)
@@ -296,13 +325,20 @@ HomingResult HomingManager::homeSensored(uint8_t axis) {
     bool homeDir = getHomeDir(axis);
     float seekRate = getSeekRate(axis) / 60.0f;  // mm/min → mm/sec
     float feedRate = getFeedRate(axis) / 60.0f;
-    float pulloffMm = DEFAULT_HOMING_PULLOFF;
+    float pulloffMm = _settings ? _settings->homingPulloff() : DEFAULT_HOMING_PULLOFF;
 
-    float stepsPerMm = DEFAULT_STEPS_PER_MM_X;
-    if (axis == 1) stepsPerMm = DEFAULT_STEPS_PER_MM_Y;
-    if (axis == 2) stepsPerMm = DEFAULT_STEPS_PER_MM_Z;
+    float stepsPerMm = _settings ? _settings->stepsPerMm(axis) : DEFAULT_STEPS_PER_MM_X;
+    float maxTravel = _settings ? _settings->maxTravel(axis) : DEFAULT_MAX_TRAVEL_X;
+    if (!_settings && axis == 1) {
+        stepsPerMm = DEFAULT_STEPS_PER_MM_Y;
+        maxTravel = DEFAULT_MAX_TRAVEL_Y;
+    }
+    if (!_settings && axis == 2) {
+        stepsPerMm = DEFAULT_STEPS_PER_MM_Z;
+        maxTravel = DEFAULT_MAX_TRAVEL_Z;
+    }
 
-    uint32_t maxSeekSteps = (uint32_t)(DEFAULT_MAX_TRAVEL_X * stepsPerMm * 1.5f);
+    uint32_t maxSeekSteps = (uint32_t)(maxTravel * stepsPerMm * 1.5f);
     uint32_t pulloffSteps = (uint32_t)(pulloffMm * stepsPerMm);
     uint32_t maxFeedSteps = (uint32_t)(pulloffMm * 3.0f * stepsPerMm);
 
@@ -315,7 +351,12 @@ HomingResult HomingManager::homeSensored(uint8_t axis) {
         LOG_DEBUG_HOMING("Switch already triggered, pulling off first");
         stepAxis(axis, !homeDir, seekRate, pulloffSteps * 3,
                  limitSwitchReleased, this);
+        if (_aborted) return HomingResult::ABORTED;
         hal->delayMs(HOMING_DEBOUNCE_MS);
+        if (limitSwitchTriggered(axis, this)) {
+            LOG_ERROR("Homing: Switch stayed triggered during initial pull-off for axis %d", axis);
+            return HomingResult::SWITCH_NOT_FOUND;
+        }
     }
 
     stepAxis(axis, homeDir, seekRate, maxSeekSteps,
@@ -340,6 +381,10 @@ HomingResult HomingManager::homeSensored(uint8_t axis) {
 
     if (_aborted) return HomingResult::ABORTED;
     hal->delayMs(HOMING_DEBOUNCE_MS);
+    if (limitSwitchTriggered(axis, this)) {
+        LOG_ERROR("Homing: Switch did not release during pull-off for axis %d", axis);
+        return HomingResult::SWITCH_NOT_FOUND;
+    }
 
     // ── Phase 3: FEED — Slow precision approach ───────────────────────
     LOG_DEBUG_HOMING("Phase 3: Feeding (%.0f mm/min)", feedRate * 60.0f);
@@ -359,6 +404,12 @@ HomingResult HomingManager::homeSensored(uint8_t axis) {
 
     // ── Phase 4: Final pull-off ────────────────────────────────────────
     stepAxis(axis, !homeDir, feedRate, pulloffSteps, nullptr, nullptr);
+    if (_aborted) return HomingResult::ABORTED;
+    hal->delayMs(HOMING_DEBOUNCE_MS);
+    if (limitSwitchTriggered(axis, this)) {
+        LOG_ERROR("Homing: Switch stayed triggered after final pull-off for axis %d", axis);
+        return HomingResult::SWITCH_NOT_FOUND;
+    }
 
     LOG_INFO("Homing: Axis %d complete", axis);
     return HomingResult::OK;
@@ -392,14 +443,20 @@ HomingResult HomingManager::homeSensorless(uint8_t axis) {
 
     bool homeDir = getHomeDir(axis);
     float homingSpeed = DEFAULT_SG_HOMING_SPEED; // mm/sec (constant speed required)
-    float pulloffMm = DEFAULT_HOMING_PULLOFF;
 
-    float stepsPerMm = DEFAULT_STEPS_PER_MM_X;
-    if (axis == 1) stepsPerMm = DEFAULT_STEPS_PER_MM_Y;
-    if (axis == 2) stepsPerMm = DEFAULT_STEPS_PER_MM_Z;
+    float stepsPerMm = _settings ? _settings->stepsPerMm(axis) : DEFAULT_STEPS_PER_MM_X;
+    float maxTravel = _settings ? _settings->maxTravel(axis) : DEFAULT_MAX_TRAVEL_X;
+    if (!_settings && axis == 1) {
+        stepsPerMm = DEFAULT_STEPS_PER_MM_Y;
+        maxTravel = DEFAULT_MAX_TRAVEL_Y;
+    }
+    if (!_settings && axis == 2) {
+        stepsPerMm = DEFAULT_STEPS_PER_MM_Z;
+        maxTravel = DEFAULT_MAX_TRAVEL_Z;
+    }
 
-    uint32_t maxSteps = (uint32_t)(DEFAULT_MAX_TRAVEL_X * stepsPerMm * 1.5f);
-    uint32_t pulloffSteps = (uint32_t)(pulloffMm * stepsPerMm);
+    uint32_t maxSteps = (uint32_t)(maxTravel * stepsPerMm * 1.5f);
+    uint32_t pulloffSteps = (uint32_t)((_settings ? _settings->homingPulloff() : DEFAULT_HOMING_PULLOFF) * stepsPerMm);
 
     // ── Configure TMC driver for homing (current, StealthChop bypass, DIAG out) ──
     LOG_DEBUG_HOMING("Configuring driver StallGuard for sensorless homing");

@@ -5,6 +5,9 @@ import { serial } from './lib/serial.js';
 import { websocket } from './lib/websocket.js';
 import { logManager, LOG_CATEGORY } from './lib/log-manager.js';
 import { traceImage, renderTracePreview } from './lib/image-tracer.js';
+import { escapeHtml } from './lib/html-utils.js';
+import { canSendManualCommand, invalidateGcode, isCommandQueueBusy, isCutReady } from './lib/gcode-state.js';
+import { buildJogCommands } from './lib/machine-commands.js';
 
 // ══════════════════════════════════════════════════════════════
 // Global Error Handler
@@ -32,7 +35,7 @@ function showToast(message, type = 'info', durationMs = 4000) {
   const icons = { info: 'ℹ', success: '✓', warning: '⚠', error: '✕' };
   toast.innerHTML = `
     <span class="toast-icon">${icons[type] || icons.info}</span>
-    <span class="toast-message">${message}</span>
+    <span class="toast-message">${escapeHtml(message)}</span>
     <button class="toast-close" onclick="this.parentElement.remove()">×</button>
   `;
   toastContainer.appendChild(toast);
@@ -389,6 +392,7 @@ function updateWorkflowSelector(tool1, tool2) {
       state.selectedWorkflow = opt.id;
       dom.workflowCards.querySelectorAll('.workflow-card').forEach(c => c.classList.remove('active'));
       btn.classList.add('active');
+      invalidateCurrentJob();
       updateToolLabels();
     });
     dom.workflowCards.appendChild(btn);
@@ -491,13 +495,22 @@ function registerConnectionCallbacks() {
       
       setTimeout(() => {
         conn.sendRealtimeCharacter('?');
-        conn.sendLine('$$');
+        sendManualCommand('$$');
       }, 500);
     };
 
     conn.onError = (context, err) => {
       showToast(`${context}: ${err.message || err}`, 'error', 5000);
       logManager.error(`${context}: ${err.message || err}`);
+    };
+
+    conn.onQueueStateChanged = updateStartCutStatus;
+
+    conn.onJobAborted = () => {
+      logManager.gcode('Job stopped because the machine rejected a command.');
+      dom.progressText.innerText = 'Stopped';
+      dom.progressStats.innerText = 'Machine rejected a command';
+      resetCutButtons();
     };
     
     conn.onDisconnect = () => {
@@ -610,6 +623,11 @@ function handleFileImport(file) {
 }
 
 function handleSVGFile(file) {
+  state.svgData = null;
+  invalidateCurrentJob();
+  dom.btnGenGcode.disabled = true;
+  if (dom.svgInfo) dom.svgInfo.style.display = 'none';
+
   // Hide trace settings
   if (dom.traceSettings) dom.traceSettings.style.display = 'none';
   state.traceFile = null;
@@ -642,6 +660,10 @@ function handleSVGFile(file) {
 
 async function handleRasterFile(file) {
   state.traceFile = file;
+  state.svgData = null;
+  invalidateCurrentJob();
+  dom.btnGenGcode.disabled = true;
+  if (dom.svgInfo) dom.svgInfo.style.display = 'none';
   if (dom.traceSettings) dom.traceSettings.style.display = 'block';
   
   const options = {
@@ -884,12 +906,11 @@ function setupCanvasInteractions() {
   
   dom.btnCanvasClear.addEventListener('click', () => {
     state.svgData = null;
-    state.gcode = '';
+    invalidateCurrentJob();
     state.traceFile = null;
     dom.svgInfo.style.display = 'none';
     if (dom.traceSettings) dom.traceSettings.style.display = 'none';
     dom.btnGenGcode.disabled = true;
-    updateStartCutStatus();
     drawCanvas();
     logManager.system('Design cleared');
   });
@@ -902,10 +923,13 @@ function setupParamHandlers() {
   [dom.cfgScale, dom.cfgTolerance, dom.cfgOffsetX, dom.cfgOffsetY].forEach(input => {
     if (input) input.addEventListener('change', drawCanvas);
   });
+  [dom.cfgScale, dom.cfgOffsetX, dom.cfgOffsetY].forEach(input => {
+    if (input) input.addEventListener('change', invalidateCurrentJob);
+  });
   
   // Bed size changes
-  if (dom.cfgBedX) dom.cfgBedX.addEventListener('change', () => { state.bedSizeX = parseInt(dom.cfgBedX.value) || 300; drawCanvas(); });
-  if (dom.cfgBedY) dom.cfgBedY.addEventListener('change', () => { state.bedSizeY = parseInt(dom.cfgBedY.value) || 300; drawCanvas(); });
+  if (dom.cfgBedX) dom.cfgBedX.addEventListener('change', () => { state.bedSizeX = parseInt(dom.cfgBedX.value) || 300; invalidateCurrentJob(); drawCanvas(); });
+  if (dom.cfgBedY) dom.cfgBedY.addEventListener('change', () => { state.bedSizeY = parseInt(dom.cfgBedY.value) || 300; invalidateCurrentJob(); drawCanvas(); });
   
   // Material profile cards
   dom.profileCards.forEach(card => {
@@ -920,6 +944,7 @@ function setupParamHandlers() {
         dom.cfgSpeedLinear.value = p.speed;
         dom.cfgPasses.value = p.passes;
       }
+      invalidateCurrentJob();
     });
   });
   
@@ -928,18 +953,29 @@ function setupParamHandlers() {
       dom.profileCards.forEach(c => c.classList.remove('active'));
       document.querySelector('[data-profile="custom"]')?.classList.add('active');
       state.currentProfile = 'custom';
+      invalidateCurrentJob();
     });
+  });
+
+  [dom.cfgSpeedRapid, dom.cfgUpDownDelays].forEach(input => {
+    if (input) input.addEventListener('input', invalidateCurrentJob);
   });
   
   // Tool head change → update labels
-  if (dom.cfgToolHead1) dom.cfgToolHead1.addEventListener('change', updateToolLabels);
-  if (dom.cfgToolHead2) dom.cfgToolHead2.addEventListener('change', updateToolLabels);
+  if (dom.cfgToolHead1) dom.cfgToolHead1.addEventListener('change', () => { updateToolLabels(); invalidateCurrentJob(); });
+  if (dom.cfgToolHead2) dom.cfgToolHead2.addEventListener('change', () => { updateToolLabels(); invalidateCurrentJob(); });
   
   // Generate G-code
   dom.btnGenGcode.addEventListener('click', () => {
     if (!state.svgData) return;
     
     const heads = dom.cfgHeads ? parseInt(dom.cfgHeads.value) : 1;
+
+    if (heads !== 1) {
+      invalidateCurrentJob();
+      showToast('Dual-head operation is not supported by the current firmware.', 'warning', 6000);
+      return;
+    }
     
     state.gcode = generateGcode(state.svgData.paths, {
       feedRateLinear: parseInt(dom.cfgSpeedLinear.value) || 1500,
@@ -982,8 +1018,13 @@ function setupParamHandlers() {
 }
 
 function updateStartCutStatus() {
-  const isReady = state.connected && state.gcode.length > 0;
-  dom.btnStartCut.disabled = !isReady;
+  dom.btnStartCut.disabled = !isCutReady(state);
+}
+
+function invalidateCurrentJob() {
+  invalidateGcode(state);
+  updateGcodePreview();
+  updateStartCutStatus();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -991,13 +1032,21 @@ function updateStartCutStatus() {
 // ══════════════════════════════════════════════════════════════
 function setupCutterHandlers() {
   dom.btnStartCut.addEventListener('click', () => {
-    if (!state.gcode) return;
+    if (!isCutReady(state)) {
+      updateStartCutStatus();
+      showToast('Wait for the current machine command or motion to finish.', 'warning', 4000);
+      return;
+    }
     const verb = getToolAction(dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife').toLowerCase();
     if (!confirm(`Start ${verb}? Ensure material is loaded and tool is ready.`)) return;
     
     const lines = state.gcode.split('\n');
     logManager.gcode(`Starting job: ${lines.length} lines`);
-    state.connection.startSending(lines);
+    if (!state.connection.startSending(lines)) {
+      updateStartCutStatus();
+      showToast('A machine command sequence is already active.', 'warning', 4000);
+      return;
+    }
     
     dom.btnStartCut.style.display = 'none';
     dom.btnPauseCut.style.display = 'inline-flex';
@@ -1030,35 +1079,35 @@ function setupCutterHandlers() {
     logManager.error('EMERGENCY STOP');
     state.connection.sendRealtimeCharacter('!');
     state.connection.sendRealtimeCharacter(String.fromCharCode(24));
-    if (state.connection.sending) state.connection.stopSending();
+    state.connection.stopSending();
     resetCutButtons();
   });
   
   dom.btnUnlock.addEventListener('click', () => {
+    if (!sendManualCommand('$X')) return;
     logManager.system('Unlock ($X)');
-    state.connection.sendLine('$X');
   });
   
   dom.btnHome.addEventListener('click', () => {
+    if (!sendManualCommand('$H')) return;
     logManager.system('Homing ($H)');
-    state.connection.sendLine('$H');
   });
   
   dom.btnZeroXY.addEventListener('click', () => {
+    if (!sendManualCommand('G92 X0 Y0')) return;
     logManager.system('Zero work pos (G92 X0 Y0)');
-    state.connection.sendLine('G92 X0 Y0');
   });
   
   dom.btnToolTest.addEventListener('click', () => {
     const pressure = parseInt(dom.cfgPressure.value) || 90;
     const verb = getToolVerb(dom.cfgToolHead1 ? dom.cfgToolHead1.value : 'dragknife');
     if (state.toolDown) {
+      if (!sendManualCommand('M5')) return;
       logManager.system(`Test: ${verb} tool UP (M5)`);
-      state.connection.sendLine('M5');
       state.toolDown = false;
     } else {
+      if (!sendManualCommand(`M3 S${pressure}`)) return;
       logManager.system(`Test: ${verb} tool DOWN (M3 S${pressure})`);
-      state.connection.sendLine(`M3 S${pressure}`);
       state.toolDown = true;
     }
   });
@@ -1071,18 +1120,44 @@ function setupCutterHandlers() {
   
   // Quick utils
   dom.btnCmdStatus.addEventListener('click', () => state.connection.sendRealtimeCharacter('?'));
-  dom.btnCmdEndstops.addEventListener('click', () => state.connection.sendLine('M119'));
-  dom.btnCmdHelp.addEventListener('click', () => state.connection.sendLine('M100'));
-  dom.btnCmdMotorsOff.addEventListener('click', () => state.connection.sendLine('M18'));
+  dom.btnCmdEndstops.addEventListener('click', () => sendManualCommand('M119'));
+  dom.btnCmdHelp.addEventListener('click', () => sendManualCommand('M100'));
+  dom.btnCmdMotorsOff.addEventListener('click', () => sendManualCommand('M18'));
+}
+
+function sendManualSequence(commands) {
+  if (!state.connected || !state.connection) {
+    showToast('Connect to the machine before sending commands.', 'warning', 4000);
+    return false;
+  }
+  if (!canSendManualCommand(state)) {
+    showToast('Wait for the current machine command or motion to finish.', 'warning', 4000);
+    return false;
+  }
+  if (!state.connection.sendCommandSequence(commands)) {
+    showToast('A machine command sequence is already active.', 'warning', 4000);
+    return false;
+  }
+  return true;
+}
+
+function sendManualCommand(command) {
+  return sendManualSequence([command]);
 }
 
 function sendJogMove(dirX, dirY) {
+  if (!state.connected) {
+    showToast('Connect to the machine before jogging.', 'warning', 4000);
+    return;
+  }
   const step = parseFloat(dom.cfgJogStep.value) || 1.0;
   const speed = 2500;
-  const dx = dirX * step;
-  const dy = dirY * step;
-  logManager.serial(`Jog: G91 G0 X${dx} Y${dy} F${speed}`, 'tx');
-  state.connection.sendLine(`G21 G91 G0 X${dx} Y${dy} F${speed} G90`);
+  const commands = buildJogCommands(dirX, dirY, step, speed);
+  if (!state.connection.sendCommandSequence(commands, { abortWithReset: true })) {
+    showToast('A machine command sequence is already active.', 'warning', 4000);
+    return;
+  }
+  logManager.serial(`Jog: ${commands.join(' → ')}`, 'tx');
 }
 
 function resetCutButtons() {
@@ -1128,10 +1203,9 @@ function setupTabHandlers() {
 function setupConsoleHandlers() {
   const sendInput = () => {
     const val = dom.terminalInput.value.trim();
-    if (val) {
+    if (val && sendManualCommand(val)) {
       logToTerminal(val, 'tx');
       logManager.serial(val, 'tx');
-      state.connection.sendLine(val);
       dom.terminalInput.value = '';
     }
   };
@@ -1207,11 +1281,11 @@ function renderSettingsForm() {
 function setupSettingsHandlers() {
   if (dom.btnSettingsLoad) {
     dom.btnSettingsLoad.addEventListener('click', () => {
+      if (!sendManualCommand('$$')) return;
       state.settings = {};
       dom.settingsList.innerHTML = '';
       if (dom.settingsLoading) dom.settingsLoading.innerText = 'Loading...';
       logManager.system('Loading machine settings ($$)');
-      state.connection.sendLine('$$');
     });
   }
   
@@ -1219,31 +1293,32 @@ function setupSettingsHandlers() {
     dom.btnSettingsSave.addEventListener('click', () => {
       const inputs = dom.settingsList.querySelectorAll('input');
       let commands = [];
+      const updates = [];
       inputs.forEach(input => {
         const num = parseInt(input.dataset.settingNum);
         const oldVal = state.settings[num].val;
         const newVal = parseFloat(input.value);
         if (oldVal !== newVal) {
           commands.push(`$${num}=${newVal}`);
-          state.settings[num].val = newVal;
+          updates.push([num, newVal]);
         }
       });
       
       if (commands.length === 0) { showToast('No changes to save.', 'info'); return; }
-      
-      logManager.system(`Saving ${commands.length} settings to EEPROM`);
-      commands.forEach(cmd => state.connection.sendLine(cmd));
-      state.connection.sendLine('M500');
-      showToast(`Saved ${commands.length} settings`, 'success');
+      commands.push('M500');
+      if (!sendManualSequence(commands)) return;
+      updates.forEach(([num, value]) => { state.settings[num].val = value; });
+      logManager.system(`Saving ${updates.length} settings to EEPROM`);
+      showToast(`Saved ${updates.length} settings`, 'success');
     });
   }
   
   if (dom.btnSettingsReset) {
     dom.btnSettingsReset.addEventListener('click', () => {
       if (confirm('Restore factory defaults?')) {
+        if (!sendManualCommand('$RST=*')) return;
         logManager.system('Factory reset ($RST=*)');
-        state.connection.sendLine('$RST=*');
-        setTimeout(() => { state.settings = {}; state.connection.sendLine('$$'); }, 1000);
+        state.settings = {};
       }
     });
   }
@@ -1285,15 +1360,27 @@ function setupWorkflowUI() {
 }
 
 function setupPlotterConfigHandlers() {
+  if (dom.cfgKinematics) dom.cfgKinematics.addEventListener('change', invalidateCurrentJob);
+
   if (dom.cfgHeads) {
     dom.cfgHeads.addEventListener('change', (e) => {
-      const isDual = e.target.value === '2';
+      let isDual = e.target.value === '2';
+      if (isDual) {
+        e.target.value = '1';
+        showToast('Dual-head operation is not supported by the current firmware.', 'warning', 6000);
+        isDual = false;
+      }
       if (dom.head2Offsets) dom.head2Offsets.style.display = isDual ? 'block' : 'none';
       if (dom.groupToolHead2) dom.groupToolHead2.style.display = isDual ? 'block' : 'none';
       if (dom.workflowSelector) dom.workflowSelector.style.display = isDual ? 'block' : 'none';
+      invalidateCurrentJob();
       updateToolLabels();
     });
   }
+
+  [dom.cfgHead2X, dom.cfgHead2Y].forEach(input => {
+    if (input) input.addEventListener('change', invalidateCurrentJob);
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1370,7 +1457,7 @@ function setupKeyboardShortcuts() {
 
 // Beforeunload guard
 window.addEventListener('beforeunload', (e) => {
-  if (state.connection?.sending) {
+  if (isCommandQueueBusy(state.connection)) {
     e.preventDefault();
     e.returnValue = 'A job is in progress. Leave?';
   }

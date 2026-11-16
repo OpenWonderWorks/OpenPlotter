@@ -189,6 +189,10 @@ export function generateGcode(paths, options = {}) {
     workflow = 'head1-then-2'
   } = options;
 
+  if (Number(heads) !== 1) {
+    throw new Error('Dual-head operation is not supported by the current firmware.');
+  }
+
   const gcode = [];
   const verb1 = getToolVerb(toolHead1);
   const verb2 = getToolVerb(toolHead2);

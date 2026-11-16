@@ -113,6 +113,58 @@ void Settings::load() {
     _driverType[1] = hal->storageReadByte(SET_DRIVER_Y);
     _driverType[2] = hal->storageReadByte(SET_DRIVER_Z);
     _driverType[3] = hal->storageReadByte(SET_DRIVER_C);
+
+    // EEPROM/NVS contents can be stale or corrupted. Never apply invalid
+    // kinematics, motion, travel, or actuator values after a reboot.
+    for (uint8_t axis = 0; axis < 4; ++axis) {
+        const uint16_t stepsSetting = (uint16_t)(100 + axis);
+        const uint16_t rateSetting = (uint16_t)(110 + axis);
+        const uint16_t travelSetting = (uint16_t)(140 + axis);
+        if (!isValidSettingValue(stepsSetting, _stepsPerMm[axis])) {
+            const float defaults[4] = {DEFAULT_STEPS_PER_MM_X, DEFAULT_STEPS_PER_MM_Y,
+                                       DEFAULT_STEPS_PER_MM_Z, DEFAULT_STEPS_PER_DEG_C};
+            _stepsPerMm[axis] = defaults[axis];
+        }
+        if (!isValidSettingValue(rateSetting, _maxRate[axis])) {
+            const float defaults[4] = {DEFAULT_MAX_RATE_X, DEFAULT_MAX_RATE_Y,
+                                       DEFAULT_MAX_RATE_Z, DEFAULT_MAX_RATE_C};
+            _maxRate[axis] = defaults[axis];
+        }
+        if (axis < 3 && !isValidSettingValue(travelSetting, _maxTravel[axis])) {
+            const float defaults[3] = {DEFAULT_MAX_TRAVEL_X, DEFAULT_MAX_TRAVEL_Y,
+                                       DEFAULT_MAX_TRAVEL_Z};
+            _maxTravel[axis] = defaults[axis];
+        }
+        if (!isValidSettingValue((uint16_t)(166 + axis), _driverType[axis])) {
+            const uint8_t defaults[4] = {DEFAULT_DRIVER_X, DEFAULT_DRIVER_Y,
+                                         DEFAULT_DRIVER_Z, DEFAULT_DRIVER_C};
+            _driverType[axis] = defaults[axis];
+        }
+    }
+    if (!isValidSettingValue(120, _acceleration)) _acceleration = DEFAULT_ACCELERATION;
+    if (!isValidSettingValue(130, _junctionDeviation)) _junctionDeviation = DEFAULT_JUNCTION_DEVIATION;
+    if (!isValidSettingValue(150, _homingSeekRate)) _homingSeekRate = DEFAULT_HOMING_SEEK_RATE;
+    if (!isValidSettingValue(151, _homingFeedRate)) _homingFeedRate = DEFAULT_HOMING_FEED_RATE;
+    if (!isValidSettingValue(152, _homingPulloff)) _homingPulloff = DEFAULT_HOMING_PULLOFF;
+    if (!isValidSettingValue(160, _homingMethod)) _homingMethod = DEFAULT_HOMING_METHOD;
+    if (!isValidSettingValue(161, _sgThreshold)) _sgThreshold = DEFAULT_SG_THRESHOLD;
+    if (!isValidSettingValue(170, _servoUpAngle)) _servoUpAngle = DEFAULT_SERVO_UP_ANGLE;
+    if (!isValidSettingValue(171, _servoDownAngle)) _servoDownAngle = DEFAULT_SERVO_DOWN_ANGLE;
+    if (!isValidSettingValue(172, _servoDelay)) _servoDelay = DEFAULT_SERVO_DELAY;
+    if (!isValidSettingValue(173, _bladePressure)) _bladePressure = DEFAULT_BLADE_PRESSURE;
+    if (!isValidSettingValue(174, _toolType)) _toolType = DEFAULT_TOOL_TYPE;
+    if (!isValidSettingValue(190, _wifiMode)) _wifiMode = 0;
+    if (!isValidSettingValue(162, _tmcRunCurrent)) _tmcRunCurrent = DEFAULT_TMC_RUN_CURRENT_MA;
+    if (!isValidSettingValue(163, _tmcHoldCurrent)) _tmcHoldCurrent = DEFAULT_TMC_HOLD_CURRENT_MA;
+    if (!isValidSettingValue(164, _tmcMicrosteps)) _tmcMicrosteps = DEFAULT_TMC_MICROSTEPS;
+    if (!isValidSettingValue(165, _tmcStealthChop ? 1.0f : 0.0f)) _tmcStealthChop = DEFAULT_TMC_STEALTHCHOP;
+    for (uint8_t axis = 0; axis < 4; ++axis) {
+        if (!isValidSettingValue((uint16_t)(180 + axis), _invertAxis[axis] ? 1.0f : 0.0f)) {
+            const bool defaults[4] = {DEFAULT_INVERT_X, DEFAULT_INVERT_Y,
+                                      DEFAULT_INVERT_Z, DEFAULT_INVERT_C};
+            _invertAxis[axis] = defaults[axis];
+        }
+    }
 }
 
 void Settings::save() {
@@ -243,6 +295,8 @@ void Settings::setDriverType(uint8_t axis, uint8_t type) {
 
 // Set by $ number
 bool Settings::setByNumber(uint16_t number, float value) {
+    if (!isValidSettingValue(number, value)) return false;
+
     switch (number) {
         case 100: setStepsPerMm(0, value); return true;
         case 101: setStepsPerMm(1, value); return true;
@@ -285,42 +339,47 @@ bool Settings::setByNumber(uint16_t number, float value) {
 }
 
 // Print all settings
-void Settings::printAll() {
+void Settings::printAll(void (*lineSink)(const char*)) {
     char buf[64];
-    snprintf(buf, sizeof(buf), "$100=%.3f (steps/mm X)", _stepsPerMm[0]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$101=%.3f (steps/mm Y)", _stepsPerMm[1]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$102=%.3f (steps/mm Z)", _stepsPerMm[2]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$103=%.3f (steps/deg C)", _stepsPerMm[3]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$110=%.0f (max rate X mm/min)", _maxRate[0]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$111=%.0f (max rate Y mm/min)", _maxRate[1]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$112=%.0f (max rate Z mm/min)", _maxRate[2]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$113=%.0f (max rate C deg/min)", _maxRate[3]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$120=%.0f (acceleration mm/s^2)", _acceleration); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$130=%.4f (junction deviation mm)", _junctionDeviation); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$140=%.0f (max travel X mm)", _maxTravel[0]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$141=%.0f (max travel Y mm)", _maxTravel[1]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$142=%.0f (max travel Z mm)", _maxTravel[2]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$150=%.0f (homing seek rate mm/min)", _homingSeekRate); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$151=%.0f (homing feed rate mm/min)", _homingFeedRate); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$152=%.1f (homing pull-off mm)", _homingPulloff); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$160=%d (homing method: 0=sensored 1=sensorless)", _homingMethod); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$161=%d (StallGuard threshold 0-255)", _sgThreshold); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$170=%d (servo up angle deg)", _servoUpAngle); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$171=%d (servo down angle deg)", _servoDownAngle); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$172=%d (servo delay ms)", _servoDelay); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$173=%d (blade pressure 0-255)", _bladePressure); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$174=%d (tool: 0=servo 1=solenoid 2=tangential)", _toolType); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$180=%d (invert X)", _invertAxis[0]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$181=%d (invert Y)", _invertAxis[1]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$182=%d (invert Z)", _invertAxis[2]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$183=%d (invert C)", _invertAxis[3]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$190=%d (WiFi mode: 0=AP 1=STA)", _wifiMode); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$162=%d (TMC run current mA)", _tmcRunCurrent); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$163=%d (TMC hold current mA)", _tmcHoldCurrent); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$164=%d (TMC microsteps)", _tmcMicrosteps); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$165=%d (TMC StealthChop: 0=spreadCycle 1=stealthChop)", _tmcStealthChop ? 1 : 0); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$166=%d (Driver X: 0=A4988 1=DRV8825 2=TMC2208 3=TMC2209 4=TMC2130 5=TMC5160)", _driverType[0]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$167=%d (Driver Y)", _driverType[1]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$168=%d (Driver Z)", _driverType[2]); hal->serialPrintln(buf);
-    snprintf(buf, sizeof(buf), "$169=%d (Driver C)", _driverType[3]); hal->serialPrintln(buf);
+    #define OUTPUT_SETTING_LINE() do { \
+        if (lineSink) lineSink(buf); \
+        else hal->serialPrintln(buf); \
+    } while (0)
+    snprintf(buf, sizeof(buf), "$100=%.3f (steps/mm X)", _stepsPerMm[0]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$101=%.3f (steps/mm Y)", _stepsPerMm[1]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$102=%.3f (steps/mm Z)", _stepsPerMm[2]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$103=%.3f (steps/deg C)", _stepsPerMm[3]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$110=%.0f (max rate X mm/min)", _maxRate[0]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$111=%.0f (max rate Y mm/min)", _maxRate[1]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$112=%.0f (max rate Z mm/min)", _maxRate[2]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$113=%.0f (max rate C deg/min)", _maxRate[3]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$120=%.0f (acceleration mm/s^2)", _acceleration); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$130=%.4f (junction deviation mm)", _junctionDeviation); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$140=%.0f (max travel X mm)", _maxTravel[0]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$141=%.0f (max travel Y mm)", _maxTravel[1]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$142=%.0f (max travel Z mm)", _maxTravel[2]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$150=%.0f (homing seek rate mm/min)", _homingSeekRate); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$151=%.0f (homing feed rate mm/min)", _homingFeedRate); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$152=%.1f (homing pull-off mm)", _homingPulloff); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$160=%d (homing method: 0=sensored 1=sensorless)", _homingMethod); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$161=%d (StallGuard threshold 0-255)", _sgThreshold); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$170=%d (servo up angle deg)", _servoUpAngle); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$171=%d (servo down angle deg)", _servoDownAngle); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$172=%d (servo delay ms)", _servoDelay); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$173=%d (blade pressure 0-255)", _bladePressure); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$174=%d (tool: 0=servo 1=solenoid 2=tangential)", _toolType); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$180=%d (invert X)", _invertAxis[0]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$181=%d (invert Y)", _invertAxis[1]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$182=%d (invert Z)", _invertAxis[2]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$183=%d (invert C)", _invertAxis[3]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$190=%d (WiFi mode: 0=AP 1=STA)", _wifiMode); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$162=%d (TMC run current mA)", _tmcRunCurrent); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$163=%d (TMC hold current mA)", _tmcHoldCurrent); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$164=%d (TMC microsteps)", _tmcMicrosteps); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$165=%d (TMC StealthChop: 0=spreadCycle 1=stealthChop)", _tmcStealthChop ? 1 : 0); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$166=%d (Driver X: 0=A4988 1=DRV8825 2=TMC2208 3=TMC2209 4=TMC2130 5=TMC5160)", _driverType[0]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$167=%d (Driver Y)", _driverType[1]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$168=%d (Driver Z)", _driverType[2]); OUTPUT_SETTING_LINE();
+    snprintf(buf, sizeof(buf), "$169=%d (Driver C)", _driverType[3]); OUTPUT_SETTING_LINE();
+    #undef OUTPUT_SETTING_LINE
 }

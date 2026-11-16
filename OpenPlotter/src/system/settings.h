@@ -10,6 +10,7 @@
 #include "../hal/hal.h"
 #include "../../openplotter_config.h"
 #include <stdint.h>
+#include <math.h>
 
 // ── Setting indices (EEPROM/NVS addresses) ─────────────────────────────────
 // Each float takes 4 bytes. Booleans use 1 byte.
@@ -116,10 +117,64 @@ public:
      */
     bool setByNumber(uint16_t number, float value);
 
+    /** Reject malformed or out-of-range values before they affect motion. */
+    static bool isValidSettingValue(uint16_t number, float value) {
+        if (!isfinite(value)) return false;
+
+        const bool isInteger = floorf(value) == value;
+        switch (number) {
+            case 100: case 101: case 102: case 103:
+                return value >= 0.001f && value <= 10000.0f;
+            case 110: case 111: case 112: case 113:
+            case 150: case 151:
+                return value >= 1.0f && value <= 60000.0f;
+            case 120:
+                return value > 0.0f && value <= 10000.0f;
+            case 130:
+                return value >= 0.0f && value <= 1000.0f;
+            case 140: case 141: case 142:
+                return value >= 0.1f && value <= 10000.0f;
+            case 152:
+                return value > 0.0f && value <= 100.0f;
+            case 160:
+                return isInteger && (value == 0.0f || value == 1.0f);
+            case 161: case 173:
+                return isInteger && value >= 0.0f && value <= 255.0f;
+            case 162: case 163:
+                return isInteger && value >= 100.0f && value <= 5000.0f;
+            case 164:
+                return isInteger && (value == 1.0f || value == 2.0f || value == 4.0f ||
+                       value == 8.0f || value == 16.0f || value == 32.0f ||
+                       value == 64.0f || value == 128.0f || value == 256.0f);
+            case 165: case 180: case 181: case 182: case 183: case 190:
+                return isInteger && (value == 0.0f || value == 1.0f);
+            case 170: case 171:
+                return isInteger && value >= 0.0f && value <= 180.0f;
+            case 172:
+                return isInteger && value >= 0.0f && value <= 60000.0f;
+            case 174:
+                return isInteger && value >= 0.0f && value <= 2.0f;
+            case 166: case 167: case 168: case 169:
+                if (!isInteger) return false;
+                #if defined(HAS_TMC_UART) && defined(HAS_TMC_SPI)
+                    return value >= 0.0f && value <= 5.0f;
+                #elif defined(HAS_TMC_UART)
+                    return value >= 0.0f && value <= 3.0f;
+                #elif defined(HAS_TMC_SPI)
+                    return value == 0.0f || value == 1.0f ||
+                           value == 4.0f || value == 5.0f;
+                #else
+                    return value == 0.0f || value == 1.0f;
+                #endif
+            default:
+                return false;
+        }
+    }
+
     /**
      * Print all settings to serial (for $$ command).
      */
-    void printAll();
+    void printAll(void (*lineSink)(const char*) = nullptr);
 
 private:
     float _stepsPerMm[4];

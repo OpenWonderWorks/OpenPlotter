@@ -43,13 +43,17 @@ void Planner::init(float stepsPerMm[4], float maxRate[4], float acceleration,
 }
 
 void Planner::reset() {
+    discardPendingMotion();
+    memset(_positionSteps, 0, sizeof(_positionSteps));
+    _feedOverride = 100;
+}
+
+void Planner::discardPendingMotion() {
     _blockBuffer.clear();
     _segmentBuffer.clear();
-    memset(_positionSteps, 0, sizeof(_positionSteps));
     memset(_prevUnitVec, 0, sizeof(_prevUnitVec));
     _hasPrevBlock = false;
     _currentSegmentStep = 0;
-    _feedOverride = 100;
 }
 
 // ============================================================================
@@ -251,6 +255,11 @@ bool Planner::planArcMove(float target[2], float offset[2], bool isClockwise,
     float segments = fabsf(sweep * radius) / sqrtf(2.0f * ARC_TOLERANCE * radius);
     int numSegments = MathUtils::clamp((int)ceilf(segments),
                                         ARC_SEGMENTS_MIN, ARC_SEGMENTS_MAX);
+
+    // Reserve the whole arc before adding its first chord. A partial arc is
+    // not a safe approximation and would otherwise leave the final position
+    // inconsistent if the planner buffer fills partway through.
+    if (numSegments > (int)availableBlocks()) return false;
 
     float angleIncrement = sweep / (float)numSegments;
     if (isClockwise) angleIncrement = -angleIncrement;

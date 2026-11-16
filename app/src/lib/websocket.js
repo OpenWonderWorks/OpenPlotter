@@ -17,6 +17,7 @@ export class WebSocketManager {
     this.onLineReceived = () => {};
     this.onProgress = () => {};
     this.onError = () => {};
+    this.onQueueStateChanged = () => {};
     
     // Send Queue
     this.queue = [];
@@ -24,6 +25,10 @@ export class WebSocketManager {
     this.sending = false;
     this.paused = false;
     this.waitingForOk = false;
+    this.awaitingIdle = false;
+    this.queueMode = null;
+    this.abortWithRealtimeReset = false;
+    this.onJobAborted = () => {};
     
     // Status Query Timer
     this.statusInterval = null;
@@ -206,6 +211,8 @@ export class WebSocketManager {
   }
 
   handleMessage(data) {
+    if (typeof data !== 'string') return;
+
     const lines = data.split('\n');
     lines.forEach(line => {
       const trimmed = line.trim();
@@ -218,11 +225,26 @@ export class WebSocketManager {
         this.sendNext();
       } else if (trimmed.startsWith('error:')) {
         console.warn('Machine reported error via WS:', trimmed);
+        const failedQueueMode = this.queueMode;
+        const hadPendingQueue = this.sending || this.waitingForOk || this.awaitingIdle;
+        const shouldResetFirmware = failedQueueMode === 'job' || this.abortWithRealtimeReset;
+        this.stopSending();
+        if (hadPendingQueue && shouldResetFirmware) {
+          // Flush already-planned motion and let firmware safety handling raise the tool.
+          this.sendRealtimeCharacter(String.fromCharCode(24));
+        }
+        if (hadPendingQueue && failedQueueMode === 'job') {
+          this._surfaceJobAborted(trimmed);
+        }
         this._surfaceError('Machine error', new Error(trimmed));
-        this.waitingForOk = false;
-        this.sendNext();
       } else if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
         this.parseStatusReport(trimmed);
+      } else if (trimmed.startsWith('{')) {
+        try {
+          this.parseJsonStatusReport(JSON.parse(trimmed));
+        } catch (err) {
+          console.warn('Ignoring malformed WebSocket JSON message:', err);
+        }
       }
     });
   }
@@ -243,7 +265,48 @@ export class WebSocketManager {
       }
     });
     
-    this.onStatus({ state, mPos, buffer });
+    const status = { state, mPos, buffer };
+    this.onStatus(status);
+    this._completeIfIdle(status);
+  }
+
+  parseJsonStatusReport(message) {
+    if (!message || typeof message !== 'object' || !message.pos || typeof message.pos !== 'object') return;
+
+    const numberOrZero = value => {
+      const number = Number(value);
+      return Number.isFinite(number) ? number : 0;
+    };
+    const status = {
+      state: typeof message.state === 'string' ? message.state : 'Unknown',
+      mPos: {
+        x: numberOrZero(message.pos.x),
+        y: numberOrZero(message.pos.y),
+        z: numberOrZero(message.pos.z)
+      },
+      buffer: numberOrZero(message.buffer),
+      feed: numberOrZero(message.feed),
+      tool: Boolean(message.tool)
+    };
+
+    this.onStatus(status);
+    this._completeIfIdle(status);
+  }
+
+  _completeIfIdle(status) {
+    if (!this.awaitingIdle || status.state !== 'Idle') return;
+    const completedMode = this.queueMode;
+    const completedIndex = this.queueIndex;
+    const completedTotal = this.queue.length;
+    this.awaitingIdle = false;
+    this.queueMode = null;
+    this.abortWithRealtimeReset = false;
+    if (completedMode === 'sequence') {
+      this.queue = [];
+      this.queueIndex = 0;
+    }
+    this._surfaceQueueStateChanged();
+    if (completedMode === 'job') this.onProgress(100, completedIndex, completedTotal);
   }
 
   startStatusPolling() {
@@ -285,12 +348,28 @@ export class WebSocketManager {
 
   // Queue Sending Operations
   startSending(gcodeLines) {
+    return this._startQueue(gcodeLines, 'job', true);
+  }
+
+  sendCommandSequence(commands, { abortWithReset = false } = {}) {
+    return this._startQueue(commands, 'sequence', abortWithReset);
+  }
+
+  _startQueue(gcodeLines, mode, abortWithRealtimeReset) {
+    if (this.sending || this.waitingForOk || this.awaitingIdle) return false;
+
     this.queue = gcodeLines.map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith(';'));
+    if (this.queue.length === 0) return false;
     this.queueIndex = 0;
     this.sending = true;
     this.paused = false;
     this.waitingForOk = false;
+    this.awaitingIdle = false;
+    this.queueMode = mode;
+    this.abortWithRealtimeReset = abortWithRealtimeReset;
+    this._surfaceQueueStateChanged();
     this.sendNext();
+    return true;
   }
 
   stopSending() {
@@ -299,6 +378,10 @@ export class WebSocketManager {
     this.queue = [];
     this.queueIndex = 0;
     this.waitingForOk = false;
+    this.awaitingIdle = false;
+    this.queueMode = null;
+    this.abortWithRealtimeReset = false;
+    this._surfaceQueueStateChanged();
   }
 
   pauseSending() {
@@ -317,7 +400,8 @@ export class WebSocketManager {
     
     if (this.queueIndex >= this.queue.length) {
       this.sending = false;
-      this.onProgress(100, this.queueIndex, this.queue.length);
+      this.awaitingIdle = true;
+      this._surfaceQueueStateChanged();
       return;
     }
     
@@ -325,8 +409,10 @@ export class WebSocketManager {
     this.queueIndex++;
     this.waitingForOk = true;
     
-    const progressPercent = Math.round((this.queueIndex / this.queue.length) * 100);
-    this.onProgress(progressPercent, this.queueIndex, this.queue.length);
+    if (this.queueMode === 'job') {
+      const progressPercent = Math.min(99, Math.round((this.queueIndex / this.queue.length) * 100));
+      this.onProgress(progressPercent, this.queueIndex, this.queue.length);
+    }
     
     this.sendLine(line);
   }
@@ -339,6 +425,22 @@ export class WebSocketManager {
       this.onError(context, err);
     } catch (e) {
       console.error('Error in onError callback:', e);
+    }
+  }
+
+  _surfaceJobAborted(error) {
+    try {
+      this.onJobAborted(error);
+    } catch (e) {
+      console.error('Error in onJobAborted callback:', e);
+    }
+  }
+
+  _surfaceQueueStateChanged() {
+    try {
+      this.onQueueStateChanged();
+    } catch (e) {
+      console.error('Error in onQueueStateChanged callback:', e);
     }
   }
 }

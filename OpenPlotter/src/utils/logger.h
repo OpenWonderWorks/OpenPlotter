@@ -19,23 +19,16 @@
 
 #include "../hal/hal.h"
 #include <stdio.h>
+#include <stdarg.h>
 
 // Forward declaration of global HAL
 extern HAL* hal;
 
-// ── Log Levels ──────────────────────────────────────────────────────────────
-enum class LogLevel : uint8_t {
-    NONE = 0,
-    ERROR = 1,
-    WARN = 2,
-    INFO = 3,
-    DEBUG = 4,
-    VERBOSE = 5
-};
-
-// ── Global log level (can be changed at runtime via settings) ───────────────
-#ifndef LOG_LEVEL
-    #define LOG_LEVEL LogLevel::INFO
+// ── Build-time log level ─────────────────────────────────────────────────────
+// 0 = silent, 1 = errors, 2 = warnings/errors, 3 = info plus warnings/errors.
+// Error/warning defaults keep serial output quieter while G-code is streamed.
+#ifndef OPENPLOTTER_LOG_LEVEL
+    #define OPENPLOTTER_LOG_LEVEL 2
 #endif
 
 // ── Logging Macros ──────────────────────────────────────────────────────────
@@ -65,10 +58,23 @@ inline void _logPrint(const char* prefix, const char* fmt, ...) {
     hal->serialPrintln(buf);
 }
 
-// Always-on log macros
-#define LOG_ERROR(fmt, ...)   _logPrint("[ERR] ", fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...)    _logPrint("[WRN] ", fmt, ##__VA_ARGS__)
-#define LOG_INFO(fmt, ...)    _logPrint("[INF] ", fmt, ##__VA_ARGS__)
+#if OPENPLOTTER_LOG_LEVEL >= 1
+    #define LOG_ERROR(fmt, ...) _logPrint("[ERR] ", fmt, ##__VA_ARGS__)
+#else
+    #define LOG_ERROR(fmt, ...) ((void)0)
+#endif
+
+#if OPENPLOTTER_LOG_LEVEL >= 2
+    #define LOG_WARN(fmt, ...) _logPrint("[WRN] ", fmt, ##__VA_ARGS__)
+#else
+    #define LOG_WARN(fmt, ...) ((void)0)
+#endif
+
+#if OPENPLOTTER_LOG_LEVEL >= 3
+    #define LOG_INFO(fmt, ...) _logPrint("[INF] ", fmt, ##__VA_ARGS__)
+#else
+    #define LOG_INFO(fmt, ...) ((void)0)
+#endif
 
 // Conditional debug macros — compile to nothing when not enabled
 #ifdef DEBUG_GCODE_PARSER

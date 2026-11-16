@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a reproducible issue in the app, firmware, build, or documentation.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For hardware reports, first make the machine safe. Remove passwords, tokens, serial numbers, and personal data from logs.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and the behavior you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Companion app
+        - Firmware
+        - Build or installation
+        - Documentation
+        - Android scaffold
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the release version or Git commit.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and version, Node version, and connection type where relevant.
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware and firmware profile
+      description: Board/revision, shield, drivers, tool, selected profile, and relevant wiring/config. Write "not applicable" for software-only issues.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste the smallest useful excerpt. Remove secrets and personal identifiers.
+      render: text

@@ -25,6 +25,9 @@ public:
      */
     char* readLine();
 
+    /** Consume the next WebSocket real-time command, if any. */
+    char checkRealtimeCommand();
+
     /**
      * Send text to all connected WebSocket clients.
      */

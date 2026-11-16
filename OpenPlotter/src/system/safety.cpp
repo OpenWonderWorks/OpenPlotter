@@ -5,14 +5,42 @@
  */
 
 #include "safety.h"
+#include "safety_checks.h"
 #include "../utils/logger.h"
 
 Safety* Safety::_instance = nullptr;
 
-void Safety::init(Stepper* stepper, Planner* planner, Status* status) {
+static uint8_t enabledHardLimitMask() {
+    uint8_t mask = 0;
+    #ifdef X_MIN_PIN
+    if (HARD_LIMIT_X_MIN_ENABLED) mask |= 0x01;
+    #endif
+    #ifdef X_MAX_PIN
+    if (HARD_LIMIT_X_MAX_ENABLED) mask |= 0x02;
+    #endif
+    #ifdef Y_MIN_PIN
+    if (HARD_LIMIT_Y_MIN_ENABLED) mask |= 0x04;
+    #endif
+    #ifdef Y_MAX_PIN
+    if (HARD_LIMIT_Y_MAX_ENABLED) mask |= 0x08;
+    #endif
+    #ifdef Z_MIN_PIN
+    if (HARD_LIMIT_Z_MIN_ENABLED) mask |= 0x10;
+    #endif
+    #ifdef Z_MAX_PIN
+    if (HARD_LIMIT_Z_MAX_ENABLED) mask |= 0x20;
+    #endif
+    return mask;
+}
+
+void Safety::init(Stepper* stepper, Planner* planner, Status* status,
+                  Settings* settings, HomingManager* homing, ToolController* tool) {
     _stepper = stepper;
     _planner = planner;
     _status = status;
+    _settings = settings;
+    _homing = homing;
+    _tool = tool;
     _instance = this;
 
     // Configure E-stop pin
@@ -20,18 +48,21 @@ void Safety::init(Stepper* stepper, Planner* planner, Status* status) {
     hal->pinMode(ESTOP_PIN, PinMode::INPUT_PULLUP_MODE);
 
     // Check if E-stop is already active (NC button is open = stopped)
-    bool estopState = hal->digitalRead(ESTOP_PIN);
-    if (ESTOP_PIN_ACTIVE_LOW) estopState = !estopState;
+    const bool estopState = isActiveLevel(hal->digitalRead(ESTOP_PIN),
+                                          ESTOP_PIN_ACTIVE_LOW);
     if (estopState) {
         LOG_WARN("Safety: E-stop is active at startup!");
         _estopActive = true;
+        emergencyStop();
     }
     #endif
 
-    // Set up hard limit interrupts if enabled
+    // Snapshot active switches for edge detection during the blocking homing
+    // routine. Normal motion checks active levels and fails closed.
     #if HARD_LIMITS_ENABLED
-    // NOTE: Hard limit interrupts are only active during RUN state.
-    // During homing, they are temporarily disabled.
+    _lastLimitMask = _homing
+        ? (uint8_t)(_homing->readEndstops() & enabledHardLimitMask())
+        : 0;
     #endif
 
     LOG_INFO("Safety: Initialized (soft_limits=%s hard_limits=%s)",
@@ -42,27 +73,56 @@ void Safety::init(Stepper* stepper, Planner* planner, Status* status) {
 void Safety::update() {
     // Check E-stop
     #ifdef ESTOP_PIN
-    bool estopState = hal->digitalRead(ESTOP_PIN);
-    if (ESTOP_PIN_ACTIVE_LOW) estopState = !estopState;
+    const bool estopState = isActiveLevel(hal->digitalRead(ESTOP_PIN),
+                                          ESTOP_PIN_ACTIVE_LOW);
 
-    if (estopState && !_estopActive) {
+    if (estopState && (!_estopActive || (_status && !_status->isAlarmed()))) {
         emergencyStop();
     }
     _estopActive = estopState;
+    #endif
+
+    #if HARD_LIMITS_ENABLED
+    const uint8_t limitMask = _homing
+        ? (uint8_t)(_homing->readEndstops() & enabledHardLimitMask())
+        : 0;
+    if (_status && _status->getState() == MachineState::HOMING) {
+        const uint8_t expectedHomeMask = _homing
+            ? homeSwitchMaskForAxis(_homing->currentAxis()) : 0;
+        const uint8_t newlyTriggered = (uint8_t)(limitMask & (uint8_t)~_lastLimitMask);
+        _lastLimitMask = limitMask;
+        // Let the expected home switch stop its own seek. A newly activated
+        // opposite end or another enabled switch still aborts homing.
+        if ((newlyTriggered & (uint8_t)~expectedHomeMask) != 0) {
+            hardLimitTriggered();
+        }
+    } else {
+        _lastLimitMask = limitMask;
+        if (limitMask && _stepper && _stepper->getState() == StepperState::RUNNING) {
+            hardLimitTriggered();
+        }
+    }
     #endif
 }
 
 bool Safety::checkSoftLimits(float target[4]) const {
     #if SOFT_LIMITS_ENABLED
-    if (target[0] < 0.0f || target[0] > DEFAULT_MAX_TRAVEL_X) return false;
-    if (target[1] < 0.0f || target[1] > DEFAULT_MAX_TRAVEL_Y) return false;
-    #if NUM_AXES >= 3
-    if (target[2] < 0.0f || target[2] > DEFAULT_MAX_TRAVEL_Z) return false;
+    if (!_settings) return false;
+    float maxTravel[4] = {
+        _settings->maxTravel(0), _settings->maxTravel(1),
+        _settings->maxTravel(2), _settings->maxTravel(3)
+    };
+    #if NUM_AXES >= 4
+    return withinTravelLimits(target, maxTravel, 4);
+    #elif NUM_AXES >= 3
+    return withinTravelLimits(target, maxTravel, 3);
+    #else
+    return withinTravelLimits(target, maxTravel, 2);
     #endif
     #else
     (void)target;
-    #endif
     return true;
+    #endif
 }
 
 void Safety::hardLimitTriggered() {
@@ -70,6 +130,8 @@ void Safety::hardLimitTriggered() {
 
     LOG_ERROR("Safety: HARD LIMIT TRIGGERED — Emergency stop!");
     _stepper->emergencyStop();
+    if (_tool) _tool->toolUp();
+    _requiresHoming = true;
     _status->setAlarm(1); // Alarm 1: Hard limit
 }
 
@@ -78,6 +140,8 @@ void Safety::emergencyStop() {
 
     LOG_ERROR("Safety: EMERGENCY STOP!");
     _stepper->emergencyStop();
+    if (_tool) _tool->toolUp();
+    _requiresHoming = true;
     _status->setAlarm(2); // Alarm 2: E-stop
 }
 

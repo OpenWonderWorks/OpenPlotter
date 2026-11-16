@@ -21,11 +21,22 @@
  * environments automatically via platformio.ini.
  */
 // #define BOARD_MEGA_STANDALONE    // Standalone Arduino Mega 2560 (No ESP32)
-#define BOARD_MEGA_RAMPS14       // Arduino Mega 2560 + RAMPS 1.4 Shield (No ESP32) - RECOMMENDED
+// #define BOARD_MEGA_RAMPS14       // Arduino Mega 2560 + RAMPS 1.4 Shield (No ESP32) - RECOMMENDED
 // #define BOARD_NANO_STANDALONE    // Standalone Arduino Nano (No ESP32)
 // #define BOARD_ESP32_STANDALONE   // Standalone ESP32 (No Arduino Mega/Nano)
 // #define BOARD_MEGA_ESP32_HYBRID  // Arduino Mega 2560 (Motion) + ESP32 (WiFi bridge)
 // #define BOARD_NANO_ESP32_HYBRID  // Arduino Nano (Motion) + ESP32 (WiFi bridge)
+
+// Select the recommended profile only for Arduino IDE builds with no board
+// macros supplied by the build environment. PlatformIO environments pass
+// BOARD_* explicitly and must never inherit the default RAMPS pin map.
+#if !defined(BOARD_MEGA) && !defined(BOARD_NANO) && !defined(BOARD_ESP32) && \
+    !defined(BOARD_NATIVE) && !defined(HYBRID_MODE) && !defined(BRIDGE_MODE) && \
+    !defined(BOARD_MEGA_STANDALONE) && !defined(BOARD_MEGA_RAMPS14) && \
+    !defined(BOARD_NANO_STANDALONE) && !defined(BOARD_ESP32_STANDALONE) && \
+    !defined(BOARD_MEGA_ESP32_HYBRID) && !defined(BOARD_NANO_ESP32_HYBRID)
+    #define BOARD_MEGA_RAMPS14
+#endif
 
 // Resolve selection profiles to macros
 #if defined(BOARD_MEGA_STANDALONE)
@@ -36,8 +47,8 @@
     #define HAS_TMC_UART
 #elif defined(BOARD_NANO_STANDALONE)
     #define BOARD_NANO
-    #define PLANNER_BUFFER_SIZE 12
-    #define SERIAL_RX_BUFFER_SIZE 128
+    #define PLANNER_BUFFER_SIZE 8
+    #define GCODE_LINE_MAX_LENGTH 96
 #elif defined(BOARD_ESP32_STANDALONE)
     #define BOARD_ESP32
     #define HAS_WIFI
@@ -52,8 +63,8 @@
 #elif defined(BOARD_NANO_ESP32_HYBRID)
     #define BOARD_NANO
     #define HYBRID_MODE
-    #define PLANNER_BUFFER_SIZE 12
-    #define SERIAL_RX_BUFFER_SIZE 128
+    #define PLANNER_BUFFER_SIZE 8
+    #define GCODE_LINE_MAX_LENGTH 96
 #endif
 
 // ── Include pin definitions for selected board ──────────────────────────────
@@ -80,8 +91,13 @@
 // ── Stepper Driver Configuration ────────────────────────────────────────────
 // Driver type per axis: 
 // 0 = A4988, 1 = DRV8825, 2 = TMC2208 (UART), 3 = TMC2209 (UART), 4 = TMC2130 (SPI), 5 = TMC5160 (SPI)
-#define DEFAULT_DRIVER_X            3   // Default: TMC2209 for X axis
-#define DEFAULT_DRIVER_Y            3   // Default: TMC2209 for Y axis
+#if defined(HAS_TMC_UART) || defined(HAS_TMC_SPI)
+    #define DEFAULT_DRIVER_X        3   // Default: TMC2209 for X axis
+    #define DEFAULT_DRIVER_Y        3   // Default: TMC2209 for Y axis
+#else
+    #define DEFAULT_DRIVER_X        0   // Default: A4988 where TMC control is not enabled
+    #define DEFAULT_DRIVER_Y        0
+#endif
 #define DEFAULT_DRIVER_Z            0   // Default: A4988 for Z axis (servo/solenoid)
 #define DEFAULT_DRIVER_C            0   // Default: A4988 for C axis (tangential rotation)
 
@@ -220,12 +236,9 @@
 // ── Communication ───────────────────────────────────────────────────────────
 #define SERIAL_BAUD_RATE            115200
 
-// Serial RX buffer (Nano needs smaller buffer due to limited RAM)
-#ifndef SERIAL_RX_BUFFER_SIZE
-    #define SERIAL_RX_BUFFER_SIZE   256
+#ifndef GCODE_LINE_MAX_LENGTH
+    #define GCODE_LINE_MAX_LENGTH   128       // Max characters per G-code line
 #endif
-
-#define GCODE_LINE_MAX_LENGTH       128       // Max characters per G-code line
 #define STATUS_REPORT_INTERVAL_MS   200       // ms between auto status reports
 
 // ESP32 WiFi settings
@@ -251,7 +264,9 @@
 // Larger = smoother motion, more RAM. Nano needs smaller buffer.
 #ifndef PLANNER_BUFFER_SIZE
     #if defined(BOARD_NANO)
-        #define PLANNER_BUFFER_SIZE 12
+        #define PLANNER_BUFFER_SIZE 8
+    #elif defined(BOARD_MEGA)
+        #define PLANNER_BUFFER_SIZE 16
     #elif defined(BOARD_ESP32)
         #define PLANNER_BUFFER_SIZE 32
     #else
@@ -260,14 +275,41 @@
 #endif
 
 // Segment buffer size (prepared step segments consumed by ISR)
-#define SEGMENT_BUFFER_SIZE         8
+#ifndef SEGMENT_BUFFER_SIZE
+    #if defined(BOARD_NANO)
+        #define SEGMENT_BUFFER_SIZE 4
+    #else
+        #define SEGMENT_BUFFER_SIZE 8
+    #endif
+#endif
 
 // Minimum feed rate (mm/min) — prevents division by zero
 #define MIN_FEED_RATE               1.0f
 
 // ── Safety ──────────────────────────────────────────────────────────────────
 #define HARD_LIMITS_ENABLED         true      // Alarm on limit switch trigger during run
-#define ESTOP_PIN_ACTIVE_LOW        true      // E-stop button is normally closed
+#define ESTOP_PIN_ACTIVE_LOW        false     // NC-to-GND + pull-up: open/pressed reads HIGH
+
+// Hard-limit inputs are polled in the main loop. Enable a switch only when it
+// is physically wired; an unconnected NC input reads as an open circuit.
+#ifndef HARD_LIMIT_X_MIN_ENABLED
+    #define HARD_LIMIT_X_MIN_ENABLED true
+#endif
+#ifndef HARD_LIMIT_X_MAX_ENABLED
+    #define HARD_LIMIT_X_MAX_ENABLED false
+#endif
+#ifndef HARD_LIMIT_Y_MIN_ENABLED
+    #define HARD_LIMIT_Y_MIN_ENABLED true
+#endif
+#ifndef HARD_LIMIT_Y_MAX_ENABLED
+    #define HARD_LIMIT_Y_MAX_ENABLED false
+#endif
+#ifndef HARD_LIMIT_Z_MIN_ENABLED
+    #define HARD_LIMIT_Z_MIN_ENABLED false
+#endif
+#ifndef HARD_LIMIT_Z_MAX_ENABLED
+    #define HARD_LIMIT_Z_MAX_ENABLED false
+#endif
 
 // ── Debug ───────────────────────────────────────────────────────────────────
 // Uncomment to enable verbose debug output on Serial

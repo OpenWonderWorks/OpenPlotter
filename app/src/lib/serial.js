@@ -19,6 +19,7 @@ export class SerialManager {
     this.onLineReceived = () => {};
     this.onProgress = () => {};
     this.onError = () => {};
+    this.onQueueStateChanged = () => {};
     
     // Send Queue
     this.queue = [];
@@ -26,6 +27,10 @@ export class SerialManager {
     this.sending = false;
     this.paused = false;
     this.waitingForOk = false;
+    this.awaitingIdle = false;
+    this.queueMode = null;
+    this.abortWithRealtimeReset = false;
+    this.onJobAborted = () => {};
     
     // Status Query Timer
     this.statusInterval = null;
@@ -222,9 +227,18 @@ export class SerialManager {
       this.sendNext();
     } else if (line.startsWith('error:')) {
       console.warn('Machine reported error:', line);
+      const failedQueueMode = this.queueMode;
+      const hadPendingQueue = this.sending || this.waitingForOk || this.awaitingIdle;
+      const shouldResetFirmware = failedQueueMode === 'job' || this.abortWithRealtimeReset;
+      this.stopSending();
+      if (hadPendingQueue && shouldResetFirmware) {
+        // Flush already-planned motion and let firmware safety handling raise the tool.
+        this.sendRealtimeCharacter(String.fromCharCode(24));
+      }
+      if (hadPendingQueue && failedQueueMode === 'job') {
+        this._surfaceJobAborted(line);
+      }
       this._surfaceError('Machine error', new Error(line));
-      this.waitingForOk = false;
-      this.sendNext();
     } else if (line.startsWith('<') && line.endsWith('>')) {
       this.parseStatusReport(line);
     }
@@ -247,7 +261,25 @@ export class SerialManager {
       }
     });
     
-    this.onStatus({ state, mPos, buffer });
+    const status = { state, mPos, buffer };
+    this.onStatus(status);
+    this._completeIfIdle(status);
+  }
+
+  _completeIfIdle(status) {
+    if (!this.awaitingIdle || status.state !== 'Idle') return;
+    const completedMode = this.queueMode;
+    const completedIndex = this.queueIndex;
+    const completedTotal = this.queue.length;
+    this.awaitingIdle = false;
+    this.queueMode = null;
+    this.abortWithRealtimeReset = false;
+    if (completedMode === 'sequence') {
+      this.queue = [];
+      this.queueIndex = 0;
+    }
+    this._surfaceQueueStateChanged();
+    if (completedMode === 'job') this.onProgress(100, completedIndex, completedTotal);
   }
 
   startStatusPolling() {
@@ -294,12 +326,28 @@ export class SerialManager {
 
   // Queue Sending Operations
   startSending(gcodeLines) {
+    return this._startQueue(gcodeLines, 'job', true);
+  }
+
+  sendCommandSequence(commands, { abortWithReset = false } = {}) {
+    return this._startQueue(commands, 'sequence', abortWithReset);
+  }
+
+  _startQueue(gcodeLines, mode, abortWithRealtimeReset) {
+    if (this.sending || this.waitingForOk || this.awaitingIdle) return false;
+
     this.queue = gcodeLines.map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith(';'));
+    if (this.queue.length === 0) return false;
     this.queueIndex = 0;
     this.sending = true;
     this.paused = false;
     this.waitingForOk = false;
+    this.awaitingIdle = false;
+    this.queueMode = mode;
+    this.abortWithRealtimeReset = abortWithRealtimeReset;
+    this._surfaceQueueStateChanged();
     this.sendNext();
+    return true;
   }
 
   stopSending() {
@@ -308,6 +356,10 @@ export class SerialManager {
     this.queue = [];
     this.queueIndex = 0;
     this.waitingForOk = false;
+    this.awaitingIdle = false;
+    this.queueMode = null;
+    this.abortWithRealtimeReset = false;
+    this._surfaceQueueStateChanged();
   }
 
   pauseSending() {
@@ -326,7 +378,8 @@ export class SerialManager {
     
     if (this.queueIndex >= this.queue.length) {
       this.sending = false;
-      this.onProgress(100, this.queueIndex, this.queue.length);
+      this.awaitingIdle = true;
+      this._surfaceQueueStateChanged();
       return;
     }
     
@@ -334,8 +387,10 @@ export class SerialManager {
     this.queueIndex++;
     this.waitingForOk = true;
     
-    const progressPercent = Math.round((this.queueIndex / this.queue.length) * 100);
-    this.onProgress(progressPercent, this.queueIndex, this.queue.length);
+    if (this.queueMode === 'job') {
+      const progressPercent = Math.min(99, Math.round((this.queueIndex / this.queue.length) * 100));
+      this.onProgress(progressPercent, this.queueIndex, this.queue.length);
+    }
     
     this.sendLine(line);
   }
@@ -349,6 +404,22 @@ export class SerialManager {
     } catch (e) {
       // Prevent onError handler from crashing the serial manager
       console.error('Error in onError callback:', e);
+    }
+  }
+
+  _surfaceJobAborted(error) {
+    try {
+      this.onJobAborted(error);
+    } catch (e) {
+      console.error('Error in onJobAborted callback:', e);
+    }
+  }
+
+  _surfaceQueueStateChanged() {
+    try {
+      this.onQueueStateChanged();
+    } catch (e) {
+      console.error('Error in onQueueStateChanged callback:', e);
     }
   }
 }

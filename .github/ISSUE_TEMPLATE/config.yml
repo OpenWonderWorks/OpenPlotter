@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setup and troubleshooting guides
+    url: https://github.com/OpenWonderWorks/OpenPlotter/tree/main/docs
+    about: Check the setup and troubleshooting guides before opening a support issue.

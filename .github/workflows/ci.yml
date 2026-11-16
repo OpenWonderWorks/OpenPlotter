@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  companion-app:
+    name: Companion app (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.12.0, 24.22.0]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+      - name: Audit locked npm dependencies
+        working-directory: app
+        run: npm audit --audit-level=moderate
+      - name: Run tests
+        working-directory: app
+        run: npm test
+      - name: Build web UI
+        working-directory: app
+        run: npm run build
+
+  firmware:
+    name: Firmware (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ startsWith(matrix.environment, 'nano') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - native
+          - mega_ramps14
+          - mega
+          - nano
+          - esp32
+          - mega_hybrid
+          - esp32_bridge
+          - nano_hybrid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PlatformIO
+        run: python -m pip install platformio
+      - name: Compile firmware
+        if: matrix.environment != 'native'
+        run: pio run -d OpenPlotter -e "${{ matrix.environment }}"
+      - name: Run native firmware tests
+        if: matrix.environment == 'native'
+        run: sh OpenPlotter/test/run-native.sh
+
+  android-scaffold:
+    name: Android scaffold checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run Android scaffold tests and assemble
+        working-directory: android-app
+        run: ./gradlew testDebugUnitTest assembleDebug
+
+  desktop-packages:
+    name: Desktop package (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows
+            runner: windows-latest
+            glob: app/dist-desktop/*.exe
+          - os: macos
+            runner: macos-latest
+            glob: app/dist-desktop/*.dmg
+          - os: linux
+            runner: ubuntu-latest
+            glob: app/dist-desktop/*.AppImage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.0
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+      - name: Package desktop app
+        working-directory: app
+        run: npm run electron:build
+      - name: Save installable package
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenPlotter-${{ matrix.os }}-${{ runner.arch }}
+          path: ${{ matrix.glob }}
+          if-no-files-found: error
+          retention-days: 14

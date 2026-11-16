@@ -1,55 +1,68 @@
-# OpenPlotter — Open-Source Precision Cutting Plotter System
+# OpenPlotter
 
-![OpenPlotter Hero](docs/images/openplotter_hero.png)
+OpenPlotter is a source repository for motion-control software for XY drawing and cutting plotters. It contains an Electron companion app, Arduino-style firmware, and an Android UI scaffold. The project-wide license is unresolved; see [License status](#license-status) before redistributing or reusing code.
 
-OpenPlotter is a production-grade, open-source cutting plotter platform. It provides high-performance C++ firmware that runs across multiple microcontroller architectures (Arduino Mega 2560, Arduino Nano, ESP32) and a sleek, native Web/Desktop Companion application for design, manual jogging, calibration, and real-time cutting control.
+**Project status:** active development. The code and board profiles are not a claim of broad hardware validation. Verify your wiring and configuration, test with the tool lifted, and keep a safe way to remove motor power before running a job.
 
----
+## Repository map
 
-## Documentation
+| Path | Purpose |
+| --- | --- |
+| `app/` | Electron companion app and browser UI |
+| `OpenPlotter/` | Firmware source, board configuration, and PlatformIO project |
+| `docs/` | Setup, wiring, G-code, and troubleshooting guides |
+| `android-app/` | Early Android UI scaffold; it does not currently control a machine |
 
-The documentation has been completely overhauled and split into dedicated guides:
+## Get started
 
-- **[Setup Guide](docs/SETUP_GUIDE.md)**: Instructions for installing the Companion App and flashing the firmware.
-- **[Wiring Guide](docs/WIRING_GUIDE.md)**: Hardware wiring schematics and instructions for RAMPS 1.4 and CNC Shield V3.
-- **[G-Code Reference](docs/GCODE_REFERENCE.md)**: Comprehensive list of supported G-codes, M-codes, and System Commands.
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)**: Common issues, alarm locks, and compilation errors.
+Install Node.js `22.12+`, then run the desktop app:
 
----
-
-## Features
-
-### 1. High-Performance Companion App
-- **Clean Native Theme**: A sleek, professional dark mode interface inspired by VSCode and GitHub, delivering premium performance and aesthetics.
-- **Flash Orchestrator**: Automatically downloads required Arduino libraries, compiles the C++ firmware, and flashes it directly to your board using `arduino-cli`—all from within the UI.
-- **SVG Path Importer & Optimizer**: Automatic curve linearization (Bézier curves to polylines), scaling, centering, and canvas previews.
-- **Interactive Design Bed Canvas**: Interactive pan, zoom, scale, and offset controls showing real-time machine crosshair tracking.
-- **Live Console & Log Panel**: A dedicated terminal for direct G-code entry and advanced system monitoring.
-
-### 2. Robust Multi-Platform Firmware
-- **Hardware Abstraction Layer (HAL)**: Uniform codebase compiling natively for AVR ATmega (Mega/Nano) and ESP32 architectures.
-- **Trapezoidal Look-Ahead Planner**: Advanced trajectory calculations to allow smooth, high-speed cornering without full stops.
-- **Timer-Interrupt Stepper Engine**: High-frequency, jitter-free stepper pulse timing utilizing hardware timers.
-- **Dual Homing Modes**:
-    - **Sensored Homing**: Mechanical endstops (Normally Closed / Normally Open).
-    - **Sensorless Homing**: Integrated TMC2209 StallGuard torque sensor monitoring for crash-less, switch-free homing.
-- **Modular Tools**: Built-in support for servo-controlled pens (pen plotters), solenoid-actuated drag knives, and tangential rotating knives.
-
----
-
-## Quick Start
-
-See the [Setup Guide](docs/SETUP_GUIDE.md) for full instructions.
-
-### 1. Run the Companion App
-
-Make sure [Node.js](https://nodejs.org/) is installed, then open a terminal in the `app/` folder:
-```bash
-npm install
+```sh
+git clone https://github.com/OpenWonderWorks/OpenPlotter.git
+cd OpenPlotter/app
+npm ci
 npm run electron:start
 ```
 
-### 2. Configure and Flash
-1. Connect your board via USB.
-2. In the App, configure your machine dimensions and drivers under the **Plotter Config** tab.
-3. Scroll down to the **Flash Firmware** section, select your COM port, and click **Compile & Flash**.
+`electron:start` builds the web UI before opening Electron, so it works from a clean checkout. For the browser version, run `npm run dev` from `app/` and open the local URL printed by Vite in Chrome or another browser that supports Web Serial.
+
+See the [setup guide](docs/SETUP_GUIDE.md) before connecting a controller or flashing firmware.
+
+## Firmware and hardware
+
+The checked-in configuration selects Mega 2560 with RAMPS 1.4 by default. Other configured profiles cover standalone Mega, ESP32 standalone, and Mega/ESP32 hybrid setups. Nano configurations remain experimental: current builds exceed the ATmega328P flash and RAM limits, so they are disabled in the companion app and omitted from downloadable assets. A configured profile does not mean that its board, driver, or wiring has been verified on hardware. Review the [wiring and safety guide](docs/WIRING_GUIDE.md), use the board manufacturer's pinout, and validate one axis at a time.
+
+Build firmware from the repository root with PlatformIO:
+
+```sh
+cd OpenPlotter
+pio run -e mega_ramps14
+```
+
+Other configured environments are listed in `OpenPlotter/platformio.ini`. Build only for the board and shield you have configured.
+
+The [G-code reference](docs/GCODE_REFERENCE.md) documents commands implemented by the firmware. The companion app and firmware are still evolving; check the issue tracker for current limitations.
+
+## Development checks
+
+From `app/`:
+
+```sh
+npm ci
+npm test
+npm run build
+```
+
+Firmware build and test commands are documented in [CONTRIBUTING.md](CONTRIBUTING.md). GitHub Actions checks app tests, locked dependency advisories, the firmware build matrix, Android scaffold, and desktop packaging on pull requests. Passing a compile job confirms a build, not safe operation on a particular machine.
+
+## Downloads
+
+Check [GitHub Releases](https://github.com/OpenWonderWorks/OpenPlotter/releases) for versioned desktop and firmware assets. Read each release note and verify the board target before installing firmware. Builds are not signed or hardware-certified unless a release explicitly says otherwise.
+
+## Contributing
+
+Bug reports, focused fixes, documentation improvements, and reproducible build reports are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and use the issue templates for bugs or feature requests.
+
+## License status
+
+The repository does not yet have one unambiguous project-wide license. `OpenPlotter/LICENSE.txt` contains GPL-3.0 text, while the firmware banner says MIT; the app and Android scaffold have no root-level license. See [docs/LICENSING.md](docs/LICENSING.md). Until maintainers resolve this conflict, do not assume one license covers the entire repository.

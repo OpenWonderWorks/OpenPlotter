@@ -1,67 +1,80 @@
-# G-Code & M-Code Reference
+# Firmware command reference
 
-OpenPlotter implements a standard CNC G-code parser designed specifically for 2D plotters, drag knives, and cutters. 
+This page describes commands implemented by the checked-in firmware, not the full RS-274 or Grbl language. Use millimeters (`G21`) and absolute coordinates (`G90`) unless your job explicitly needs another mode. Test new commands with the tool raised.
 
-## Supported G-Codes (Motion & State)
+## Motion and coordinate commands
 
-| Command | Description | Parameters |
-| :--- | :--- | :--- |
-| **G0** | Rapid Move (Pen Up Travel) | `X`, `Y` |
-| **G1** | Linear Move (Cutting/Drawing) | `X`, `Y`, `F` (Feedrate) |
-| **G2** | Clockwise Arc | `X`, `Y`, `I`, `J` (Center offset) or `R` (Radius) |
-| **G3** | Counter-Clockwise Arc | `X`, `Y`, `I`, `J` (Center offset) or `R` (Radius) |
-| **G4** | Dwell (Pause) | `P` (milliseconds) |
-| **G10** | Set Coordinate Offset | `L2`, `P1`, `X`, `Y` |
-| **G20** | Set Units to Inches | - |
-| **G21** | Set Units to Millimeters | - |
-| **G28** | Home Axes | - |
-| **G90** | Absolute Positioning | - |
-| **G91** | Relative Positioning | - |
-| **G92** | Set Position (Override Coordinates) | `X`, `Y` |
+| Command | Behavior | Parameters |
+| --- | --- | --- |
+| `G0` | Rapid linear move | `X`, `Y`, optional `Z`, `C` |
+| `G1` | Feed move | `X`, `Y`, optional `Z`, `C`, `F` |
+| `G2` / `G3` | Clockwise / counter-clockwise XY arc | End point `X`, `Y`; center offsets `I`, `J`; optional `F` |
+| `G4` | Dwell | `P` in milliseconds |
+| `G10` | Set work coordinate offset | `L`, `P`, and axis values; see current firmware implementation before use |
+| `G20` / `G21` | Select inch / millimeter mode | — |
+| `G28` | Home all configured axes | — |
+| `G90` / `G91` | Absolute / relative positioning | — |
+| `G92` | Set current work position | axis values such as `X0 Y0` |
 
-## Supported M-Codes (Machine & Tool Control)
+Linear moves are checked against configured soft limits. Arc moves are currently planned in XY using I/J center offsets. Do not assume support for a complete industrial G-code dialect.
 
-| Command | Description | Parameters |
-| :--- | :--- | :--- |
-| **M0** | Program Pause | - |
-| **M1** | Optional Pause | - |
-| **M2** / **M30** | Program End / Reset | - |
-| **M3** | Tool ON / Pen DOWN | `S` (Pressure 0-255) |
-| **M5** | Tool OFF / Pen UP | - |
-| **M17** | Enable Stepper Motors | - |
-| **M18** | Disable Stepper Motors | - |
-| **M106** | Fan / Solenoid ON | `S` (PWM 0-255) |
-| **M107** | Fan / Solenoid OFF | - |
-| **M114** | Report Current Position | - |
-| **M119** | Report Endstop Status | - |
-| **M120** | Enable Sensorless Homing | - |
-| **M121** | Disable Sensorless Homing | - |
-| **M200** | Set Blade Pressure | `P` (0-255) |
-| **M201** | Set Tangential Blade Offset | `P` (degrees) |
-| **M500** | Save Settings to EEPROM | - |
-| **M501** | Load Settings from EEPROM | - |
-| **M502** | Reset Settings to Factory Defaults | - |
+## Tool and machine commands
 
-## System Commands ($)
+| Command | Behavior | Parameters |
+| --- | --- | --- |
+| `M0` / `M1` | Enter feed hold | — |
+| `M2` / `M30` | Raise the active tool and stop the job | — |
+| `M3` | Lower the active tool | Optional `S` pressure (0–255) |
+| `M5` | Raise the active tool | — |
+| `M17` / `M18` | Enable / disable motors | — |
+| `M100` | Print firmware command help | — |
+| `M106` / `M107` | Toggle optional solenoid output where configured | Optional `S` PWM (0–255) for `M106` |
+| `M114` | Report position | — |
+| `M119` | Report configured endstop state | — |
+| `M120` / `M121` | Select sensorless / sensored homing | — |
+| `M200` | Change active tool pressure | `P` pressure (0–255) |
+| `M500` / `M501` / `M502` | Save / load / reset settings | — |
 
-OpenPlotter borrows the Grbl-style `$` commands for real-time querying and configuration.
+The firmware currently has one active tool controller. `T0` / `T1` tool changes and two-head workflows are not implemented end to end. Do not use generated dual-head jobs until firmware and app behavior explicitly support tool selection.
 
-| Command | Description |
-| :--- | :--- |
-| `$$` | Print all saved settings |
-| `$#` | Print coordinate offsets |
-| `$I` | Print firmware info |
+## System commands
+
+| Command | Behavior |
+| --- | --- |
+| `$$` | Print settings |
+| `$#` | Print work offsets |
+| `$I` | Print firmware information |
 | `$N` | Print startup blocks |
-| `$H` | Run homing cycle |
-| `$X` | Kill alarm lock |
-| `$RST=*` | Factory reset |
-| `$N=V` | Set setting N to value V |
-| `$WIFI` | Print WiFi connection status |
+| `$H` | Run homing |
+| `$X` | Clear alarm lock; after a stop, home again before moving |
+| `$RST=*` | Restore and save factory settings, then reset |
+| `$N=V` | Set setting number `N` to value `V` |
+| `$WIFI` | Print Wi-Fi status where compiled with Wi-Fi support |
 
-## Real-Time Commands
-These single characters can be sent at any time to interrupt or query the machine.
+Setting numbers and defaults are defined in `OpenPlotter/src/system/settings.cpp` and `OpenPlotter/openplotter_config.h`. Changing a setting does not necessarily reconfigure every initialized subsystem until restart; consult the source and test before relying on it.
 
-- `?` : Status Query
-- `!` : Feed Hold (Pause motion immediately)
-- `~` : Cycle Resume
-- `Ctrl+X` (0x18) : Soft Reset
+## Real-time serial characters
+
+These characters are consumed outside the normal line parser on the serial connection:
+
+| Character | Behavior |
+| --- | --- |
+| `?` | Query status |
+| `!` | Feed hold |
+| `~` | Resume after feed hold |
+| Ctrl+X (`0x18`) | Reset motion state and raise the tool |
+
+Real-time behavior depends on the connection transport. A parser accepting a command does not guarantee that every connection mode routes it correctly.
+
+## Example: conservative air move
+
+```gcode
+G21
+G90
+M5
+G0 X5 Y5 F300
+G1 X10 Y5 F100
+M5
+```
+
+Use a small, clear area and keep the tool disengaged while validating scale, direction, and limits.

@@ -26,6 +26,15 @@
 #include <ctype.h>
 #include <math.h>
 
+static bool readIntegerCode(float value, uint16_t maxValue, uint16_t& code) {
+    if (!isfinite(value) || value < 0.0f || value > (float)maxValue ||
+        floorf(value) != value) {
+        return false;
+    }
+    code = (uint16_t)value;
+    return true;
+}
+
 // ============================================================================
 // Constructor
 // ============================================================================
@@ -208,7 +217,11 @@ GCodeError GCodeParser::parseWords(const char* line, GCodeBlock& block) {
 
         switch (letter) {
             case 'G': {
-                uint8_t code = (uint8_t)value;
+                uint16_t parsedCode = 0;
+                if (!readIntegerCode(value, UINT8_MAX, parsedCode)) {
+                    return GCodeError::INVALID_GCODE;
+                }
+                uint8_t code = (uint8_t)parsedCode;
                 GCodeError err = validateGCode(code);
                 if (err != GCodeError::OK) return err;
                 block.gcode = (GCode)code;
@@ -217,7 +230,10 @@ GCodeError GCodeParser::parseWords(const char* line, GCodeBlock& block) {
             }
 
             case 'M': {
-                uint8_t code = (uint8_t)value;
+                uint16_t code = 0;
+                if (!readIntegerCode(value, UINT16_MAX, code)) {
+                    return GCodeError::INVALID_MCODE;
+                }
                 GCodeError err = validateMCode(code);
                 if (err != GCodeError::OK) return err;
                 block.mcode = (MCode)code;
@@ -357,7 +373,7 @@ GCodeError GCodeParser::validateGCode(uint8_t code) {
     }
 }
 
-GCodeError GCodeParser::validateMCode(uint8_t code) {
+GCodeError GCodeParser::validateMCode(uint16_t code) {
     switch (code) {
         case 0: case 1: case 2: case 3: case 5:
         case 17: case 18: case 30:
@@ -367,9 +383,7 @@ GCodeError GCodeParser::validateMCode(uint8_t code) {
         case 500: case 501: case 502:
             return GCodeError::OK;
         default:
-            // Accept unknown M-codes with a warning rather than error
-            LOG_WARN("Unknown M-code: M%d", code);
-            return GCodeError::OK;  // Be lenient — some senders use custom M-codes
+            return GCodeError::INVALID_MCODE;
     }
 }
 

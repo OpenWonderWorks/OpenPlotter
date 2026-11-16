@@ -1,37 +1,46 @@
 # Troubleshooting
 
-This guide covers common issues and how to fix them in OpenPlotter.
+## The companion app does not open
 
-## 1. Alarm Locks (`ALARM: Hard limit` or `ALARM: Soft limit`)
+- Confirm Node.js is `22.12+` and run `npm ci` from `app/`.
+- Run `npm run electron:start`; it builds the Vite UI before starting Electron.
+- For build errors, run `npm run build` and keep the first error and complete output for a bug report.
+- On Linux, confirm your desktop session can launch Electron and has access to the selected serial device.
 
-If your machine suddenly stops and the terminal displays an `ALARM` state:
-- **Hard Limit**: A limit switch was triggered during a non-homing move. Ensure your cables are securely connected and not picking up EMI (electromagnetic interference). If EMI is the issue, twist your endstop wires or add a 104 (0.1µF) capacitor across the endstop signal and ground pins.
-- **Soft Limit**: A command tried to send the machine past its defined bed dimensions (`$130` and `$131`). Ensure your design is placed inside the valid cutting area in the Companion App.
+## The serial port is missing or busy
 
-**To clear an alarm**, type `$X` in the console, or click the **Kill Alarm ($X)** button in the Safety tab.
+- Close other software using the port, including serial monitors and firmware tools.
+- Check the USB cable, board power, operating system device list, and any USB-to-serial driver required by the board.
+- On Linux, confirm your user has the operating system's serial-port permission. Log out and back in after changing group membership.
+- Reconnect only after the port is released. The default firmware baud rate is `115200`.
 
-## 2. Firmware Compilation Fails (Flash Orchestrator)
+## The board does not compile or flash
 
-If the Flash Orchestrator fails to compile the firmware:
-- Open the **Log Panel** at the bottom of the app to see the compiler output.
-- `unable to find numeric literal operator 'operator""f'`: Ensure you are using version `3.2.3+` of the companion app, as this bug was patched.
-- `arduino-cli not found`: The app should automatically install `arduino-cli`. If it didn't, restart the app while connected to the internet.
+- Confirm the board selection, firmware profile, and serial port match the hardware.
+- Check network access if the first build needs PlatformIO packages or Arduino libraries.
+- Read the first compiler or uploader error in the full log; later errors can be consequences.
+- Use `cd OpenPlotter && pio run -e mega_ramps14` for the default PlatformIO profile. Select another environment only when it matches your board.
+- Do not flash a binary from a different environment or board profile.
 
-## 3. Serial Port Connection Fails
+## Homing or endstops behave unexpectedly
 
-If clicking "Connect Machine" fails:
-- **Windows**: You may need to install the CH340 or CP2102 drivers depending on your Arduino clone.
-- Ensure no other software (like Arduino IDE or Cura) is currently connected to the COM port. Only one program can connect at a time.
-- The default baud rate for OpenPlotter is `115200`.
+- Stop motion and remove power if a switch does not stop the expected axis.
+- Check the exact switch terminals, polarity, pull-up setting, board pin mapping, and homing direction against your board and firmware profile.
+- Query endstop state and test switches by hand before homing.
+- Do not enable sensorless homing unless the installed driver and wiring support it. Keep an independent cutoff within reach.
 
-## 4. Machine Moves the Wrong Way
+## Motion direction or distance is wrong
 
-If your X or Y axis moves in the opposite direction of what you expect:
-- **Hardware Fix**: Power off the machine, and flip the 4-pin stepper motor connector 180 degrees.
-- **Software Fix**: Use the OpenPlotter Companion App -> **Machine Settings** -> **Invert X** or **Invert Y** checkboxes, then click **Flash Firmware**.
+- Keep the tool raised and test short moves at low speed.
+- Check steps per millimeter, axis inversion, microstep configuration, motor coil pairs, and travel limits.
+- Change one setting at a time, then re-test. Power down before changing motor or driver wiring.
 
-## 5. Stepper Motors Overheating
+## Tool pressure or servo behavior is unsafe
 
-If your stepper motors are too hot to touch:
-- **A4988 / DRV8825**: Turn the tiny screw on the driver counter-clockwise slightly to reduce the VREF (current limit).
-- **TMC2209 (UART Mode)**: Open the Companion App, lower the `Motor Current (mA)` in the settings, and re-flash.
+- Remove material and blade contact. Check servo supply voltage and available current using the component manuals.
+- Reduce pressure and test tool up/down commands with the machine stationary.
+- If the tool does not reliably raise on stop or reset, disconnect tool power and do not run jobs.
+
+## Report a reproducible issue
+
+Include the operating system, Node version, app version or commit, exact board model and revision, shield and driver models, selected firmware profile, connection type, steps to reproduce, expected and observed behavior, and relevant logs. Remove Wi-Fi passwords, serial numbers, tokens, and other private values before posting logs publicly.

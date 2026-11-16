@@ -1,62 +1,61 @@
-# OpenPlotter v4.0 Wiring Guide
+# Hardware and wiring safety
 
-This guide covers wiring the electronic components for your OpenPlotter. It supports modern 32-bit boards (BTT SKR Mini E3, MKS Gen L), ESP32 Hybrid setups, and legacy 8-bit boards.
+This guide is a safety checklist, not a board-specific wiring schematic. OpenPlotter does not currently publish a verified wiring map for every board, shield, driver, motor, and tool combination. Use the exact manufacturer's manual and the pin definitions for the firmware profile you selected.
 
-![Wiring Diagram](images/wiring_diagram_ramps.png)
+## Before wiring or changing settings
 
-## 1. General Stepper Motor Wiring
+- Disconnect the machine from mains and remove USB power before changing any motor, driver, endstop, or tool wiring. Wait for the power supply capacitors to discharge.
+- Do not connect or disconnect a stepper motor while its driver is powered. This can destroy the driver and can cause unexpected motion.
+- Keep mains wiring inside a suitable enclosure. If you are not qualified to work on mains circuits, use a certified supply with enclosed input terminals and ask a qualified person to wire it.
+- Check the voltage, polarity, and current rating of the supply, controller, drivers, motors, and tool. A connector that fits is not evidence that the parts are electrically compatible.
+- Keep a physical way to remove motor power within reach. Firmware emergency-stop, hold, homing, and soft-limit features are not substitutes for a hardware cutoff.
+- Secure the frame and workpiece, clear the motion area, and keep hands away from moving parts.
 
-NEMA 17 stepper motors generally come with 4 wires. You must pair the wires into their respective coils (A and B). 
-- If you don't know the pairs, cross two wires and turn the shaft by hand. If it offers resistance, those two wires belong to the same coil.
-- Typical colors: **Black/Green** (Coil A) and **Red/Blue** (Coil B).
+## Identify the configured pins
 
-> [!CAUTION]
-> **NEVER unplug or plug in a stepper motor while the board is powered.** Doing so will instantly destroy the stepper driver chip.
+The default firmware profile is `BOARD_MEGA_RAMPS14` in `OpenPlotter/openplotter_config.h`. Profile selection, board-specific pins, and feature flags are defined in:
 
-## 2. Advanced Driver Configuration (TMC UART / SPI)
+- `OpenPlotter/openplotter_config.h`
+- `OpenPlotter/src/hal/pins/pins_ramps14.h`
+- `OpenPlotter/src/hal/pins/pins_mega.h`
+- `OpenPlotter/src/hal/pins/pins_nano.h`
+- `OpenPlotter/src/hal/pins/pins_esp32.h`
 
-Modern setups use TMC drivers in "smart" modes. This allows the OpenPlotter companion app to configure motor currents (VREF) digitally, eliminating the need to tune potentiometers with a multimeter.
+Check the profile and the exact board revision before connecting anything. RAMPS clones and other shields can differ. Do not rely on pin numbers from a different board revision or an old online diagram.
 
-### TMC2208 / TMC2209 (UART)
-- **Wiring:** If using a board with native UART routing (like BTT SKR), simply insert the driver and the appropriate jumpers underneath (refer to your board's manual). 
-- **Standalone/RAMPS:** You must solder a wire from the driver's UART pin (usually TX/RX tied together) to a designated AUX pin on the RAMPS shield, and configure `TMC_X_ADDR` in `openplotter_config.h`.
-- **Sensorless Homing:** (TMC2209 only). Wire the `DIAG` pin of the driver to the Endstop signal pin to eliminate physical limit switches.
+## Stepper motors and drivers
 
-### TMC2130 / TMC5160 (SPI)
-- **Wiring:** Requires 4 wires (MOSI, MISO, SCK, CS) connected from the driver to the SPI header on your board. 
-- **CS Pins:** Ensure `X_CS_PIN`, `Y_CS_PIN` are correctly mapped in your config.
+1. Identify each motor coil pair from its data sheet or with a multimeter. Wire each pair to one driver coil output using the driver's labels.
+2. Confirm the driver's orientation, current limit, microstep jumpers, enable polarity, and voltage range from that driver's documentation.
+3. Set motor current conservatively. Monitor driver and motor temperature during initial testing; stop if either overheats or behaves unexpectedly.
+4. With power removed, verify that the motor shaft turns freely and that wires cannot snag on the frame.
+5. On first power-up, test one axis at a time with the tool lifted and a low jog speed. If direction is wrong, power down and correct the configured inversion or coil wiring only after checking the manufacturer's instructions.
 
-## 3. Power Supply (360W 24V/12V Industrial PSU)
+Do not assume TMC UART/SPI control is active just because a TMC driver is installed. It requires a matching firmware profile, driver type, wiring, address or chip-select, and board pin mapping.
 
-High-speed plotting requires stable power. A 360W (15A/24V or 30A/12V) industrial power supply is recommended.
+## Endstops and homing
 
-> [!WARNING]
-> **Mains Voltage (110V/220V) is lethal.** Ensure the PSU is disconnected from the wall before wiring. Use proper crimped spade connectors for all screw terminals.
+- Use the switch terminals and input voltage specified by the controller and switch manufacturer. Do not apply 5 V to a signal pin unless the board documentation says that input is 5 V tolerant.
+- Configure normally-open/normally-closed logic and pull-up behavior to match the actual wiring. The current defaults are in `OpenPlotter/openplotter_config.h`.
+- Hard-limit polling uses X_MIN and Y_MIN by default. Enable a MAX or Z switch with its `HARD_LIMIT_*_ENABLED` setting only after that input is wired and tested; an open NC input is reported as triggered.
+- Before homing, query and manually test every endstop. Verify that the firmware reports the expected state when each switch is pressed and released.
+- Verify homing direction, travel clearance, and seek speed with motors disabled or disconnected where safe, then use low speed with the tool lifted. Keep the cutoff within reach.
+- Do not use sensorless homing unless the specific driver and firmware configuration support it and you have validated it on that machine.
 
-- **Grounding:** Connect the Earth/Ground wire from your mains plug to the grounding terminal (`⏚`) on the PSU.
-- **Load Balancing:** When connecting to a board (e.g., RAMPS 1.4) that has multiple input banks (e.g., 5A and 11A terminals), split the positive (`V+`) and negative (`V-`) rails from the PSU to feed BOTH inputs to prevent overloading a single terminal block.
+## Servo and other tools
 
-## 4. Modern 32-bit Boards (BTT SKR, MKS)
+- Confirm servo voltage and stall current. Many servos should use a separate regulated supply rather than the controller's 5 V rail.
+- When using a separate tool supply, follow the board and tool instructions for grounding and isolation. Do not join grounds blindly when a design uses isolated outputs.
+- Keep blades, solenoids, and other actuators physically disengaged during initial motion checks. Test their range and pressure with material removed.
+- Ensure tool commands leave the tool raised when a job ends, is stopped, or the controller resets.
 
-- **Power:** Connect the PSU `V+` and `V-` to the `DC IN` terminals.
-- **Drivers:** These boards support UART/SPI natively. Populate the jumpers according to the manufacturer's manual for UART mode.
-- **Endstops:** Connect switches to `X-STOP` and `Y-STOP`.
+## First movement checklist
 
-## 5. ESP32 Hybrid Mode (Wireless Streaming)
+1. Remove the blade or lift the pen.
+2. Set conservative speeds, acceleration, travel limits, and tool pressure.
+3. Confirm endstop state and homing direction before homing.
+4. Jog a short distance on one axis, then check actual direction and distance.
+5. Repeat for the other axis and verify that the emergency power cutoff stops motion.
+6. Run a small air cut before cutting material.
 
-If you are using an Arduino Mega/Nano for motion control, but want wireless capabilities:
-- Wire the ESP32 `TX` pin to the Arduino `RX` pin (Serial1 on Mega, or SoftwareSerial on Nano).
-- Wire the ESP32 `RX` pin to the Arduino `TX` pin.
-- Ensure the GNDs are tied together.
-- Flash the `BOARD_MEGA_ESP32_HYBRID` or `BOARD_NANO_ESP32_HYBRID` firmware to the Arduino, and the `BOARD_ESP32` bridge firmware to the ESP32.
-
-## 6. Endstops & Limit Switches
-Limit switches are used for Homing (`$H`).
-- Use the **C (Common)** and **NC (Normally Closed)** pins on the microswitch for better noise immunity.
-- Connect to the `S` (Signal) and `-` (Ground) pins. **Do NOT connect to `+` (5V)**.
-
-## 7. Servo Motor (Pen Lift)
-
-If you are using a standard RC Servo (like an SG90) to lift the pen:
-- Connect the Signal wire (usually yellow/orange) to the designated Servo pin (e.g., Pin 11 on RAMPS).
-- Connect 5V (Red) and GND (Brown/Black). Ensure the board provides adequate 5V current for the servo; otherwise, use a separate 5V regulator (BEC).
+If the machine does not behave as expected, remove power and inspect wiring before changing settings. Include your board model/revision, driver, firmware profile, and relevant pin configuration in a bug report.

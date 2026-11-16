@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a user-facing improvement or missing capability.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What task is difficult or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed behavior
+      description: Describe what the user should be able to do.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Companion app
+        - Firmware
+        - Hardware documentation
+        - Build and release
+        - Android scaffold
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Hardware or safety impact
+      description: Note any motion, tool, power, or compatibility assumptions. State when the request is software-only.
+    validations:
+      required: true
